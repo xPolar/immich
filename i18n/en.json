@@ -1620,6 +1620,7 @@
   "minFaces": "Minimum faces",
   "minFaces_description": "The minimum number of recognized faces for a person to be displayed",
   "minimize": "Minimize",
+  "minimum_days": "Minimum days",
   "minute": "Minute",
   "minutes": "Minutes",
   "mirror_horizontal": "Horizontal",

@@ -70,6 +70,12 @@ export interface PlacesViewSettings {
   };
 }
 
+export interface ExploreViewSettings {
+  minimumDays: number;
+}
+
+export const DEFAULT_EXPLORE_MINIMUM_DAYS = 2;
+
 export interface SidebarSettings {
   people: boolean;
   sharing: boolean;
@@ -124,6 +130,10 @@ export enum PlacesGroupBy {
 export const placesViewSettings = persisted<PlacesViewSettings>('places-view-settings', {
   groupBy: PlacesGroupBy.None,
   collapsedGroups: {},
+});
+
+export const exploreViewSettings = persistedObject<ExploreViewSettings>('explore-view-settings', {
+  minimumDays: DEFAULT_EXPLORE_MINIMUM_DAYS,
 });
 
 export const showDeleteModal = persisted<boolean>('delete-confirm-dialog', true, {});
