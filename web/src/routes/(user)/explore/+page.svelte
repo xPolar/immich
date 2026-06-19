@@ -34,7 +34,7 @@
   );
   let people = $state(data.response.people);
 
-  let hasPeople = $derived(data.response.total > 0);
+  let hasPeople = $derived(people.length > 0);
 
   const onPersonThumbnailReady = ({ id }: { id: string }) => {
     for (const person of people) {

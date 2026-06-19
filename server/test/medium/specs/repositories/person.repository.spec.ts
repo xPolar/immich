@@ -23,6 +23,39 @@ beforeAll(async () => {
 });
 
 describe(PersonRepository.name, () => {
+  describe('getAllForUser', () => {
+    it('should only return people seen on the minimum number of distinct days', async () => {
+      const { ctx, sut } = setup();
+      const { user } = await ctx.newUser();
+      const { person: oneDayPerson } = await ctx.newPerson({ ownerId: user.id });
+      const { person: twoDayPerson } = await ctx.newPerson({ ownerId: user.id });
+      const oneDayDates = Array.from({ length: 20 }, (_, minute) => new Date(Date.UTC(2026, 0, 1, 9, minute)));
+      const twoDayDates = [new Date('2026-01-01T09:00:00Z'), new Date('2026-01-02T09:00:00Z')];
+
+      for (const [personId, dates] of [
+        [oneDayPerson.id, oneDayDates],
+        [twoDayPerson.id, twoDayDates],
+      ] as const) {
+        for (const localDateTime of dates) {
+          const { asset } = await ctx.newAsset({ ownerId: user.id, localDateTime });
+          await ctx.newAssetFace({ assetId: asset.id, personId });
+        }
+      }
+
+      const result = await sut.getAllForUser({ take: 10, skip: 0 }, user.id, {
+        withHidden: false,
+        minimumDays: 2,
+      });
+      const count = await sut.getNumberOfPeople(user.id, { minimumDays: 2 });
+
+      expect(result).toEqual({
+        hasNextPage: false,
+        items: [expect.objectContaining({ id: twoDayPerson.id })],
+      });
+      expect(count).toEqual({ total: 1, hidden: 0 });
+    });
+  });
+
   describe('getDataForThumbnailGenerationJob', () => {
     it('should not return the edited preview path', async () => {
       const { ctx, sut } = setup();

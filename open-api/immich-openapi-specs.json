@@ -8761,6 +8761,17 @@
             }
           },
           {
+            "name": "minimumDays",
+            "required": false,
+            "in": "query",
+            "description": "Minimum number of distinct days with assets",
+            "schema": {
+              "minimum": 1,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            }
+          },
+          {
             "name": "page",
             "required": false,
             "in": "query",

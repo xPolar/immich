@@ -58,7 +58,9 @@ describe(PersonService.name, () => {
       });
       expect(mocks.person.getAllForUser).toHaveBeenCalledWith({ skip: 0, take: 10 }, auth.user.id, {
         withHidden: true,
+        minimumDays: undefined,
       });
+      expect(mocks.person.getNumberOfPeople).toHaveBeenCalledWith(auth.user.id, { minimumDays: undefined });
     });
 
     it('should get all visible people and favorites should be first in the array', async () => {
@@ -84,7 +86,28 @@ describe(PersonService.name, () => {
       });
       expect(mocks.person.getAllForUser).toHaveBeenCalledWith({ skip: 0, take: 10 }, auth.user.id, {
         withHidden: false,
+        minimumDays: undefined,
       });
+      expect(mocks.person.getNumberOfPeople).toHaveBeenCalledWith(auth.user.id, { minimumDays: undefined });
+    });
+
+    it('should filter people by the minimum number of distinct days', async () => {
+      const auth = AuthFactory.create();
+
+      mocks.person.getAllForUser.mockResolvedValue({
+        items: [],
+        hasNextPage: false,
+      });
+      mocks.person.getNumberOfPeople.mockResolvedValue({ total: 0, hidden: 0 });
+
+      await sut.getAll(auth, { minimumDays: 2, page: 1, size: 10 });
+
+      expect(mocks.person.getAllForUser).toHaveBeenCalledWith({ skip: 0, take: 10 }, auth.user.id, {
+        withHidden: false,
+        closestFaceAssetId: undefined,
+        minimumDays: 2,
+      });
+      expect(mocks.person.getNumberOfPeople).toHaveBeenCalledWith(auth.user.id, { minimumDays: 2 });
     });
   });
 

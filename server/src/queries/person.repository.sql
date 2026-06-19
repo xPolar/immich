@@ -67,6 +67,53 @@ limit
 offset
   $6
 
+-- PersonRepository.getAllForUser (minimumDays)
+select
+  "person".*
+from
+  "person"
+  inner join "asset_face" on "asset_face"."personId" = "person"."id"
+  inner join "asset" on "asset_face"."assetId" = "asset"."id"
+  and "asset"."visibility" = 'timeline'
+  and "asset"."deletedAt" is null
+where
+  "person"."ownerId" = $1
+  and "asset_face"."deletedAt" is null
+  and "asset_face"."isVisible" is true
+  and "person"."isHidden" = $2
+group by
+  "person"."id"
+having
+  (
+    "person"."name" != $3
+    or count("asset_face"."assetId") >= COALESCE(
+      (
+        SELECT
+          value -> 'people' ->> 'minimumFaces'
+        FROM
+          user_metadata
+        WHERE
+          "userId" = $4
+          AND key = 'preferences'
+      ),
+      '3'
+    )::int
+  )
+  and count(
+    distinct ("asset"."localDateTime" at time zone 'UTC')::date
+  ) >= $5
+order by
+  "person"."isHidden" asc,
+  "person"."isFavorite" desc,
+  NULLIF(person.name, '') is null asc,
+  count("asset_face"."assetId") desc,
+  NULLIF(person.name, '') asc nulls last,
+  "person"."createdAt"
+limit
+  $6
+offset
+  $7
+
 -- PersonRepository.getAllWithoutFaces
 select
   "person".*
@@ -264,23 +311,52 @@ from
 where
   exists (
     select
+      "asset_face"."personId"
     from
       "asset_face"
+      inner join "asset" on "asset"."id" = "asset_face"."assetId"
+      and "asset"."visibility" = 'timeline'
+      and "asset"."deletedAt" is null
     where
       "asset_face"."personId" = "person"."id"
       and "asset_face"."deletedAt" is null
       and "asset_face"."isVisible" = $2
-      and exists (
-        select
-        from
-          "asset"
-        where
-          "asset"."id" = "asset_face"."assetId"
-          and "asset"."visibility" = 'timeline'
-          and "asset"."deletedAt" is null
-      )
   )
   and "person"."ownerId" = $3
+
+-- PersonRepository.getNumberOfPeople (minimumDays)
+select
+  coalesce(count(*), 0) as "total",
+  coalesce(
+    count(*) filter (
+      where
+        "isHidden" = $1
+    ),
+    0
+  ) as "hidden"
+from
+  "person"
+where
+  exists (
+    select
+      "asset_face"."personId"
+    from
+      "asset_face"
+      inner join "asset" on "asset"."id" = "asset_face"."assetId"
+      and "asset"."visibility" = 'timeline'
+      and "asset"."deletedAt" is null
+    where
+      "asset_face"."personId" = "person"."id"
+      and "asset_face"."deletedAt" is null
+      and "asset_face"."isVisible" = $2
+    group by
+      "asset_face"."personId"
+    having
+      count(
+        distinct ("asset"."localDateTime" at time zone 'UTC')::date
+      ) >= $3
+  )
+  and "person"."ownerId" = $4
 
 -- PersonRepository.refreshFaces
 with
