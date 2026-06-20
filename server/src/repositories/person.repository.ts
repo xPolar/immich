@@ -15,6 +15,7 @@ import { paginationHelper, PaginationOptions } from 'src/utils/pagination';
 export interface PersonSearchOptions {
   withHidden: boolean;
   closestFaceAssetId?: string;
+  minimumDays?: number;
 }
 
 export interface PersonNameSearchOptions {
@@ -147,7 +148,13 @@ export class PersonRepository {
       .execute();
   }
 
-  @GenerateSql({ params: [{ take: 1, skip: 0 }, DummyValue.UUID] })
+  @GenerateSql(
+    { params: [{ take: 1, skip: 0 }, DummyValue.UUID] },
+    {
+      name: 'minimumDays',
+      params: [{ take: 1, skip: 0 }, DummyValue.UUID, { withHidden: false, minimumDays: 2 }],
+    },
+  )
   async getAllForUser(pagination: PaginationOptions, userId: string, options?: PersonSearchOptions) {
     const items = await this.db
       .selectFrom('person')
@@ -181,6 +188,13 @@ export class PersonRepository {
         ]),
       )
       .groupBy('person.id')
+      .$if(!!options?.minimumDays, (qb) =>
+        qb.having(
+          sql<number>`count(distinct ("asset"."localDateTime" at time zone 'UTC')::date)`,
+          '>=',
+          options!.minimumDays!,
+        ),
+      )
       .$if(!!options?.closestFaceAssetId, (qb) =>
         qb.orderBy((eb) =>
           eb(
@@ -364,8 +378,8 @@ export class PersonRepository {
     };
   }
 
-  @GenerateSql({ params: [DummyValue.UUID] })
-  getNumberOfPeople(userId: string) {
+  @GenerateSql({ params: [DummyValue.UUID] }, { name: 'minimumDays', params: [DummyValue.UUID, { minimumDays: 2 }] })
+  getNumberOfPeople(userId: string, options?: { minimumDays?: number }) {
     const zero = sql.lit(0);
     return this.db
       .selectFrom('person')
@@ -373,17 +387,24 @@ export class PersonRepository {
         eb.exists((eb) =>
           eb
             .selectFrom('asset_face')
+            .innerJoin('asset', (join) =>
+              join
+                .onRef('asset.id', '=', 'asset_face.assetId')
+                .on('asset.visibility', '=', sql.lit(AssetVisibility.Timeline))
+                .on('asset.deletedAt', 'is', null),
+            )
+            .select('asset_face.personId')
             .whereRef('asset_face.personId', '=', 'person.id')
             .where('asset_face.deletedAt', 'is', null)
             .where('asset_face.isVisible', '=', true)
-            .where((eb) =>
-              eb.exists((eb) =>
-                eb
-                  .selectFrom('asset')
-                  .whereRef('asset.id', '=', 'asset_face.assetId')
-                  .where('asset.visibility', '=', sql.lit(AssetVisibility.Timeline))
-                  .where('asset.deletedAt', 'is', null),
-              ),
+            .$if(!!options?.minimumDays, (qb) =>
+              qb
+                .groupBy('asset_face.personId')
+                .having(
+                  sql<number>`count(distinct ("asset"."localDateTime" at time zone 'UTC')::date)`,
+                  '>=',
+                  options!.minimumDays!,
+                ),
             ),
         ),
       )

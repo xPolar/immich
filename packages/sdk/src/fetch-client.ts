@@ -5352,9 +5352,10 @@ export function deletePeople({ bulkIdsDto }: {
 /**
  * Get all people
  */
-export function getAllPeople({ closestAssetId, closestPersonId, page, size, withHidden }: {
+export function getAllPeople({ closestAssetId, closestPersonId, minimumDays, page, size, withHidden }: {
     closestAssetId?: string;
     closestPersonId?: string;
+    minimumDays?: number;
     page?: number;
     size?: number;
     withHidden?: boolean;
@@ -5365,6 +5366,7 @@ export function getAllPeople({ closestAssetId, closestPersonId, page, size, with
     }>(`/people${QS.query(QS.explode({
         closestAssetId,
         closestPersonId,
+        minimumDays,
         page,
         size,
         withHidden

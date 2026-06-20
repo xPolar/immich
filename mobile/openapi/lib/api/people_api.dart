@@ -186,6 +186,9 @@ class PeopleApi {
   /// * [String] closestPersonId:
   ///   Closest person ID for similarity search
   ///
+  /// * [int] minimumDays:
+  ///   Minimum number of distinct days with assets
+  ///
   /// * [int] page:
   ///   Page number for pagination
   ///
@@ -194,7 +197,7 @@ class PeopleApi {
   ///
   /// * [bool] withHidden:
   ///   Include hidden people
-  Future<Response> getAllPeopleWithHttpInfo({ String? closestAssetId, String? closestPersonId, int? page, int? size, bool? withHidden, Future<void>? abortTrigger, }) async {
+  Future<Response> getAllPeopleWithHttpInfo({ String? closestAssetId, String? closestPersonId, int? minimumDays, int? page, int? size, bool? withHidden, Future<void>? abortTrigger, }) async {
     // ignore: prefer_const_declarations
     final apiPath = r'/people';
 
@@ -210,6 +213,9 @@ class PeopleApi {
     }
     if (closestPersonId != null) {
       queryParams.addAll(_queryParams('', 'closestPersonId', closestPersonId));
+    }
+    if (minimumDays != null) {
+      queryParams.addAll(_queryParams('', 'minimumDays', minimumDays));
     }
     if (page != null) {
       queryParams.addAll(_queryParams('', 'page', page));
@@ -248,6 +254,9 @@ class PeopleApi {
   /// * [String] closestPersonId:
   ///   Closest person ID for similarity search
   ///
+  /// * [int] minimumDays:
+  ///   Minimum number of distinct days with assets
+  ///
   /// * [int] page:
   ///   Page number for pagination
   ///
@@ -256,8 +265,8 @@ class PeopleApi {
   ///
   /// * [bool] withHidden:
   ///   Include hidden people
-  Future<PeopleResponseDto?> getAllPeople({ String? closestAssetId, String? closestPersonId, int? page, int? size, bool? withHidden, Future<void>? abortTrigger, }) async {
-    final response = await getAllPeopleWithHttpInfo(closestAssetId: closestAssetId, closestPersonId: closestPersonId, page: page, size: size, withHidden: withHidden, abortTrigger: abortTrigger,);
+  Future<PeopleResponseDto?> getAllPeople({ String? closestAssetId, String? closestPersonId, int? minimumDays, int? page, int? size, bool? withHidden, Future<void>? abortTrigger, }) async {
+    final response = await getAllPeopleWithHttpInfo(closestAssetId: closestAssetId, closestPersonId: closestPersonId, minimumDays: minimumDays, page: page, size: size, withHidden: withHidden, abortTrigger: abortTrigger,);
     if (response.statusCode >= HttpStatus.badRequest) {
       throw ApiException(response.statusCode, await _decodeBodyBytes(response));
     }

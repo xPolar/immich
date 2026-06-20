@@ -16,6 +16,10 @@
   import { toTimelineAsset } from '$lib/utils/timeline-util';
   import { getAltText } from '$lib/utils/thumbnail-util';
   import Portal from '$lib/elements/Portal.svelte';
+  import PeopleMinimumDaysFilter from '$lib/components/faces-page/PeopleMinimumDaysFilter.svelte';
+  import { peopleViewSettings } from '$lib/stores/preferences.store';
+  import { getAllPeople } from '@immich/sdk';
+  import { handleError } from '$lib/utils/handle-error';
 
   interface Props {
     data: PageData;
@@ -33,8 +37,10 @@
     getFieldItems(data.items, 'createdAt').sort((a, b) => new Date(b.value).getTime() - new Date(a.value).getTime()),
   );
   let people = $state(data.response.people);
+  let isLoadingPeople = $state(false);
+  let minimumDaysDraft = $state(data.minimumDays);
 
-  let hasPeople = $derived(data.response.total > 0);
+  let hasPeople = $derived(people.length > 0);
 
   const onPersonThumbnailReady = ({ id }: { id: string }) => {
     for (const person of people) {
@@ -49,6 +55,19 @@
     assetViewerManager.setAsset(asset);
   };
 
+  const onApplyMinimumDays = async (minimumDays: number) => {
+    isLoadingPeople = true;
+    try {
+      const response = await getAllPeople({ withHidden: false, minimumDays });
+      people = response.people;
+      peopleViewSettings.set({ minimumDays });
+    } catch (error) {
+      handleError(error, $t('errors.failed_to_load_people'));
+    } finally {
+      isLoadingPeople = false;
+    }
+  };
+
   const assetCursor = $derived({
     current: assetViewerManager.asset!,
   });
@@ -57,16 +76,23 @@
 <OnEvents {onPersonThumbnailReady} />
 
 <UserPageLayout title={data.meta.title}>
-  {#if hasPeople}
-    <div class="mt-2 mb-6">
-      <div class="flex justify-between">
-        <p class="mb-4 font-medium dark:text-immich-dark-fg">{$t('people')}</p>
+  <div class="mt-2 mb-6">
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
+      <p class="font-medium dark:text-immich-dark-fg">{$t('people')}</p>
+      <div class="flex items-center gap-2">
+        <PeopleMinimumDaysFilter
+          bind:minimumDays={minimumDaysDraft}
+          isLoading={isLoadingPeople}
+          onApply={onApplyMinimumDays}
+        />
         <a
           href={Route.people()}
           class="pe-4 text-sm font-medium hover:text-immich-primary dark:text-immich-dark-fg dark:hover:text-immich-dark-primary"
           draggable="false">{$t('view_all')}</a
         >
       </div>
+    </div>
+    {#if hasPeople}
       <SingleGridRow class="grid grid-flow-col grid-auto-fill-20 gap-x-4 md:grid-auto-fill-28">
         {#snippet children({ itemCount })}
           {#each people.slice(0, itemCount) as person (person.id)}
@@ -88,8 +114,8 @@
           {/each}
         {/snippet}
       </SingleGridRow>
-    </div>
-  {/if}
+    {/if}
+  </div>
 
   {#if places.length > 0}
     <div class="mt-2 mb-6">
