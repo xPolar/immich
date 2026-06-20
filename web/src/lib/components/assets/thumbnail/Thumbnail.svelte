@@ -82,6 +82,7 @@
   let loaded = $state(false);
   let thumbError = $state(false);
   let skipFade = $state(false);
+  let suppressNextContextMenu = false;
 
   let width = $derived(thumbnailSize || thumbnailWidth || 235);
   let height = $derived(thumbnailSize || thumbnailHeight || 235);
@@ -116,6 +117,13 @@
   };
 
   const handleContextMenu = (event: MouseEvent) => {
+    if (suppressNextContextMenu) {
+      event.preventDefault();
+      event.stopPropagation();
+      suppressNextContextMenu = false;
+      return;
+    }
+
     if (!onShowContextMenu) {
       return;
     }
@@ -152,19 +160,12 @@
 
   let timer: ReturnType<typeof setTimeout> | null = null;
 
-  const preventContextMenu = (evt: Event) => evt.preventDefault();
-  const disposeables: (() => void)[] = [];
-
   const clearLongPressTimer = () => {
     if (!timer) {
       return;
     }
     clearTimeout(timer);
     timer = null;
-    for (const dispose of disposeables) {
-      dispose();
-    }
-    disposeables.length = 0;
   };
 
   let startX: number = 0;
@@ -176,11 +177,11 @@
       startX = evt.clientX;
       startY = evt.clientY;
       didPress = false;
+      suppressNextContextMenu = false;
       // 350ms for longpress. For reference: iOS uses 500ms for default long press, or 200ms for fast long press.
       timer = setTimeout(() => {
         onLongPress();
-        element.addEventListener('contextmenu', preventContextMenu, { once: true });
-        disposeables.push(() => element.removeEventListener('contextmenu', preventContextMenu));
+        suppressNextContextMenu = true;
         didPress = true;
       }, 350);
     };

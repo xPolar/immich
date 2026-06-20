@@ -94,4 +94,24 @@ describe('Thumbnail component', () => {
 
     expect(onShowContextMenu).toHaveBeenCalledWith({ x: 110, y: 70 }, expect.objectContaining({ id: asset.id }));
   });
+
+  it('does not open the context menu after selecting with a long press', async () => {
+    vi.useFakeTimers();
+    const asset = assetFactory.build({ originalPath: 'image.jpg', originalMimeType: 'image/jpeg' });
+    const onSelect = vi.fn();
+    const onShowContextMenu = vi.fn();
+    const sut = render(Thumbnail, { asset, onSelect, onShowContextMenu });
+    const container = sut.getByRole('link');
+
+    await fireEvent.pointerDown(container, { clientX: 10, clientY: 10 });
+    vi.advanceTimersByTime(350);
+
+    const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 });
+    container.dispatchEvent(event);
+
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: asset.id }));
+    expect(onShowContextMenu).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(true);
+    vi.useRealTimers();
+  });
 });

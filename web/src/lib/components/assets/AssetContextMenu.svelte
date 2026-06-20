@@ -122,10 +122,13 @@
       return;
     }
 
+    const selectedAsset = asset;
+    assetMultiSelectManager.clear();
+
     try {
       const response = await updateAlbumInfo({
         id: album.id,
-        updateAlbumDto: { albumThumbnailAssetId: asset.id },
+        updateAlbumDto: { albumThumbnailAssetId: selectedAsset.id },
       });
       eventManager.emit('AlbumUpdate', response);
       toastManager.primary($t('album_cover_updated'));
@@ -139,8 +142,11 @@
       return;
     }
 
+    const selectedAsset = asset;
+    assetMultiSelectManager.clear();
+
     try {
-      const fullAsset = await getAssetInfo({ ...authManager.params, id: asset.id });
+      const fullAsset = await getAssetInfo({ ...authManager.params, id: selectedAsset.id });
       await modalManager.show(ProfileImageCropperModal, { asset: fullAsset });
     } catch (error) {
       handleError(error, $t('errors.unable_to_set_profile_picture'));

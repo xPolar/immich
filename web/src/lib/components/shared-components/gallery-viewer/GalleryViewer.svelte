@@ -427,6 +427,7 @@
     }}
     onArchive={(ids) => (assets = assets.filter(({ id }) => !ids.includes(id)))}
     onDelete={(ids) => (assets = assets.filter(({ id }) => !ids.includes(id)))}
+    onRestore={(ids) => (assets = assets.filter(({ id }) => !ids.includes(id)))}
     onUndoDelete={onReload}
     onSetVisibility={(ids) => {
       assets = assets.filter(({ id }) => !ids.includes(id));
