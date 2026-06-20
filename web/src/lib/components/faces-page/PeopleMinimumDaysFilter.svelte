@@ -21,16 +21,10 @@
 </script>
 
 <form class="flex items-center gap-2" onsubmit={handleSubmit}>
-  <label for="explore-people-minimum-days" class="text-sm dark:text-immich-dark-fg">{$t('minimum_days')}</label>
-  <NumberInput
-    id="explore-people-minimum-days"
-    class="w-20"
-    inputSize={3}
-    min={1}
-    step={1}
-    bind:value
-    disabled={isLoading}
-  />
+  <label for="people-minimum-days" class="text-sm whitespace-nowrap dark:text-immich-dark-fg">
+    {$t('minimum_days')}
+  </label>
+  <NumberInput id="people-minimum-days" class="w-20" inputSize={3} min={1} step={1} bind:value disabled={isLoading} />
   <Button type="submit" size="small" variant="outline" disabled={!isValid || isLoading}>
     {$t('search_filter_apply')}
   </Button>

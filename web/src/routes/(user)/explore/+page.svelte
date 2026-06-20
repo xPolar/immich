@@ -16,7 +16,7 @@
   import { toTimelineAsset } from '$lib/utils/timeline-util';
   import { getAltText } from '$lib/utils/thumbnail-util';
   import Portal from '$lib/elements/Portal.svelte';
-  import ExplorePeopleFilter from './ExplorePeopleFilter.svelte';
+  import PeopleMinimumDaysFilter from '$lib/components/faces-page/PeopleMinimumDaysFilter.svelte';
   import { exploreViewSettings } from '$lib/stores/preferences.store';
   import { getAllPeople } from '@immich/sdk';
   import { handleError } from '$lib/utils/handle-error';
@@ -79,7 +79,11 @@
     <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
       <p class="font-medium dark:text-immich-dark-fg">{$t('people')}</p>
       <div class="flex items-center gap-2">
-        <ExplorePeopleFilter minimumDays={data.minimumDays} isLoading={isLoadingPeople} onApply={onApplyMinimumDays} />
+        <PeopleMinimumDaysFilter
+          minimumDays={data.minimumDays}
+          isLoading={isLoadingPeople}
+          onApply={onApplyMinimumDays}
+        />
         <a
           href={Route.people()}
           class="pe-4 text-sm font-medium hover:text-immich-primary dark:text-immich-dark-fg dark:hover:text-immich-dark-primary"

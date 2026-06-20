@@ -6,12 +6,13 @@
   import PeopleCard from './PeopleCard.svelte';
   import PeopleInfiniteScroll from './PeopleInfiniteScroll.svelte';
   import SearchPeople from '$lib/components/faces-page/PeopleSearch.svelte';
+  import PeopleMinimumDaysFilter from '$lib/components/faces-page/PeopleMinimumDaysFilter.svelte';
   import UserPageLayout from '$lib/components/layouts/UserPageLayout.svelte';
   import OnEvents from '$lib/components/OnEvents.svelte';
   import { QueryParameter, SessionStorageKey } from '$lib/constants';
   import PersonMergeSuggestionModal from '$lib/modals/PersonMergeSuggestionModal.svelte';
   import { Route } from '$lib/route';
-  import { locale } from '$lib/stores/preferences.store';
+  import { exploreViewSettings, locale } from '$lib/stores/preferences.store';
   import { websocketEvents } from '$lib/stores/websocket';
   import { normalizeSearchString } from '$lib/utils/string-utils';
   import { handlePromiseError } from '$lib/utils';
@@ -41,6 +42,10 @@
   let searchedPeopleLocal: PersonResponseDto[] = $state([]);
   let innerHeight = $state(0);
   let searchPeopleElement = $state<ReturnType<typeof SearchPeople>>();
+  let minimumDays = $state(data.minimumDays);
+  let isLoadingPeople = $state(false);
+  let totalPeople = $state(data.people.total);
+  let hiddenPeople = $state(data.people.hidden);
 
   onMount(() => {
     const getSearchedPeople = $page.url.searchParams.get(QueryParameter.SEARCHED_PEOPLE);
@@ -72,7 +77,7 @@
           handlePromiseError(
             Promise.all(
               Array.from({ length: pagesToLoad }).map((_, i) => {
-                return getAllPeople({ withHidden: true, page: startingPage + i });
+                return getAllPeople({ withHidden: true, minimumDays, page: startingPage + i });
               }),
             ).then((pages) => {
               for (const page of pages) {
@@ -96,7 +101,7 @@
     }
 
     try {
-      const { people: newPeople, hasNextPage } = await getAllPeople({ withHidden: true, page: nextPage });
+      const { people: newPeople, hasNextPage } = await getAllPeople({ withHidden: true, minimumDays, page: nextPage });
       people = people.concat(newPeople);
       if (nextPage !== null) {
         currentPage = nextPage;
@@ -112,6 +117,25 @@
     if (getSearchedPeople !== searchName) {
       $page.url.searchParams.set(QueryParameter.SEARCHED_PEOPLE, searchName);
       await goto($page.url, { keepFocus: true });
+    }
+  };
+
+  const onApplyMinimumDays = async (value: number) => {
+    isLoadingPeople = true;
+    try {
+      const response = await getAllPeople({ withHidden: true, minimumDays: value });
+      people = response.people;
+      minimumDays = value;
+      totalPeople = response.total;
+      hiddenPeople = response.hidden;
+      currentPage = 1;
+      nextPage = response.hasNextPage ? 2 : null;
+      sessionStorage.removeItem(SessionStorageKey.INFINITE_SCROLL_PAGE);
+      exploreViewSettings.set({ minimumDays: value });
+    } catch (error) {
+      handleError(error, $t('errors.failed_to_load_people'));
+    } finally {
+      isLoadingPeople = false;
     }
   };
 
@@ -209,10 +233,10 @@
     await clearQueryParam(QueryParameter.SEARCHED_PEOPLE, $page.url);
   };
 
-  let people = $derived(data.people.people);
+  let people = $state(data.people.people);
 
   let visiblePeople = $derived(people.filter((people) => !people.isHidden));
-  let countVisiblePeople = $derived(searchName ? searchedPeopleLocal.length : data.people.total - data.people.hidden);
+  let countVisiblePeople = $derived(searchName ? searchedPeopleLocal.length : totalPeople - hiddenPeople);
   let showPeople = $derived(searchName ? searchedPeopleLocal : visiblePeople);
 
   const onNameChangeInputFocus = (person: PersonResponseDto) => {
@@ -312,30 +336,29 @@
   ]}
 >
   {#snippet buttons()}
-    {#if people.length > 0}
-      <div class="flex items-center justify-center gap-2">
-        <div class="hidden sm:block">
-          <div class="h-10 w-40 lg:w-80">
-            <SearchPeople
-              bind:this={searchPeopleElement}
-              type="searchBar"
-              placeholder={$t('search_people')}
-              onReset={onResetSearchBar}
-              onSearch={handleSearch}
-              bind:searchName
-              bind:searchedPeopleLocal
-            />
-          </div>
+    <div class="flex flex-wrap items-center justify-end gap-2">
+      <PeopleMinimumDaysFilter {minimumDays} isLoading={isLoadingPeople} onApply={onApplyMinimumDays} />
+      <div class="hidden sm:block">
+        <div class="h-10 w-40 lg:w-80">
+          <SearchPeople
+            bind:this={searchPeopleElement}
+            type="searchBar"
+            placeholder={$t('search_people')}
+            onReset={onResetSearchBar}
+            onSearch={handleSearch}
+            bind:searchName
+            bind:searchedPeopleLocal
+          />
         </div>
-        <Button
-          leadingIcon={mdiEyeOutline}
-          onclick={() => goto('/people/manage')}
-          size="small"
-          variant="ghost"
-          color="secondary">{$t('show_and_hide_people')}</Button
-        >
       </div>
-    {/if}
+      <Button
+        leadingIcon={mdiEyeOutline}
+        onclick={() => goto('/people/manage')}
+        size="small"
+        variant="ghost"
+        color="secondary">{$t('show_and_hide_people')}</Button
+      >
+    </div>
   {/snippet}
 
   {#if countVisiblePeople > 0 && (!searchName || searchedPeopleLocal.length > 0)}
