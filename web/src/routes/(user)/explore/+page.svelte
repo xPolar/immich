@@ -17,7 +17,7 @@
   import { getAltText } from '$lib/utils/thumbnail-util';
   import Portal from '$lib/elements/Portal.svelte';
   import PeopleMinimumDaysFilter from '$lib/components/faces-page/PeopleMinimumDaysFilter.svelte';
-  import { exploreViewSettings } from '$lib/stores/preferences.store';
+  import { peopleViewSettings } from '$lib/stores/preferences.store';
   import { getAllPeople } from '@immich/sdk';
   import { handleError } from '$lib/utils/handle-error';
 
@@ -59,7 +59,7 @@
     try {
       const response = await getAllPeople({ withHidden: false, minimumDays });
       people = response.people;
-      exploreViewSettings.set({ minimumDays });
+      peopleViewSettings.set({ minimumDays });
     } catch (error) {
       handleError(error, $t('errors.failed_to_load_people'));
     } finally {

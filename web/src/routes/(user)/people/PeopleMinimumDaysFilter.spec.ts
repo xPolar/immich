@@ -16,6 +16,11 @@ vi.mock('$app/stores', async () => {
   };
 });
 
+vi.mock('$app/navigation', () => ({
+  goto: vi.fn(),
+  replaceState: vi.fn(),
+}));
+
 vi.mock('$lib/components/layouts/UserPageLayout.svelte', async () => {
   return await import('@test-data/mocks/UserPageLayout.mock.svelte');
 });
@@ -43,7 +48,7 @@ describe('People page minimum-days filter', () => {
       hasNextPage: false,
     });
 
-    const { findByDisplayValue, getByRole, queryByDisplayValue } = renderWithTooltips(PeoplePage, {
+    const { container, findByDisplayValue, queryByDisplayValue } = renderWithTooltips(PeoplePage, {
       data: {
         error: undefined,
         meta: { title: 'People' },
@@ -58,11 +63,12 @@ describe('People page minimum-days filter', () => {
       },
     });
     const user = userEvent.setup();
-    const input = getByRole('spinbutton', { name: 'minimum_days' });
+    const input = container.querySelector<HTMLInputElement>('#people-minimum-days-content')!;
+    const applyButton = input.closest('form')!.querySelector<HTMLButtonElement>('button')!;
 
     await user.clear(input);
     await user.type(input, '5');
-    await user.click(getByRole('button', { name: 'search_filter_apply' }));
+    await user.click(applyButton);
 
     expect(getAllPeople).toHaveBeenCalledWith({ withHidden: true, minimumDays: 5 });
     expect(await findByDisplayValue('Filtered person')).toBeInTheDocument();

@@ -70,11 +70,11 @@ export interface PlacesViewSettings {
   };
 }
 
-export interface ExploreViewSettings {
+export interface PeopleViewSettings {
   minimumDays: number;
 }
 
-export const DEFAULT_EXPLORE_MINIMUM_DAYS = 2;
+export const DEFAULT_PEOPLE_MINIMUM_DAYS = 2;
 
 export interface SidebarSettings {
   people: boolean;
@@ -132,8 +132,8 @@ export const placesViewSettings = persisted<PlacesViewSettings>('places-view-set
   collapsedGroups: {},
 });
 
-export const exploreViewSettings = persistedObject<ExploreViewSettings>('explore-view-settings', {
-  minimumDays: DEFAULT_EXPLORE_MINIMUM_DAYS,
+export const peopleViewSettings = persistedObject<PeopleViewSettings>('explore-view-settings', {
+  minimumDays: DEFAULT_PEOPLE_MINIMUM_DAYS,
 });
 
 export const showDeleteModal = persisted<boolean>('delete-confirm-dialog', true, {});

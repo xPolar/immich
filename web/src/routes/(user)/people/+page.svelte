@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { goto } from '$app/navigation';
+  import { goto, replaceState } from '$app/navigation';
   import { page } from '$app/stores';
   import { scrollMemory } from '$lib/actions/scroll-memory';
   import { shortcut } from '$lib/actions/shortcut';
@@ -12,7 +12,7 @@
   import { QueryParameter, SessionStorageKey } from '$lib/constants';
   import PersonMergeSuggestionModal from '$lib/modals/PersonMergeSuggestionModal.svelte';
   import { Route } from '$lib/route';
-  import { exploreViewSettings, locale } from '$lib/stores/preferences.store';
+  import { locale, peopleViewSettings } from '$lib/stores/preferences.store';
   import { websocketEvents } from '$lib/stores/websocket';
   import { normalizeSearchString } from '$lib/utils/string-utils';
   import { handlePromiseError } from '$lib/utils';
@@ -46,6 +46,13 @@
   let isLoadingPeople = $state(false);
   let totalPeople = $state(data.people.total);
   let hiddenPeople = $state(data.people.hidden);
+  let isLoadingNextPage = $state(false);
+  let requestGeneration = 0;
+  let scrollContainer: HTMLElement;
+
+  const registerScrollContainer = (node: HTMLElement) => {
+    scrollContainer = node;
+  };
 
   onMount(() => {
     const getSearchedPeople = $page.url.searchParams.get(QueryParameter.SEARCHED_PEOPLE);
@@ -74,12 +81,17 @@
           pagesToLoad = Number.parseInt(newNextPage) - nextPage;
 
         if (pagesToLoad) {
+          const generation = requestGeneration;
           handlePromiseError(
             Promise.all(
               Array.from({ length: pagesToLoad }).map((_, i) => {
                 return getAllPeople({ withHidden: true, minimumDays, page: startingPage + i });
               }),
             ).then((pages) => {
+              if (generation !== requestGeneration) {
+                resolve();
+                return;
+              }
               for (const page of pages) {
                 people = people.concat(page.people);
               }
@@ -92,23 +104,35 @@
           resolve();
         }
         sessionStorage.removeItem(SessionStorageKey.INFINITE_SCROLL_PAGE);
+      } else {
+        resolve();
       }
     });
 
   const loadNextPage = async () => {
-    if (!nextPage) {
+    if (!nextPage || isLoadingNextPage || isLoadingPeople) {
       return;
     }
 
+    const generation = requestGeneration;
+    const pageToLoad = nextPage;
+    isLoadingNextPage = true;
     try {
-      const { people: newPeople, hasNextPage } = await getAllPeople({ withHidden: true, minimumDays, page: nextPage });
-      people = people.concat(newPeople);
-      if (nextPage !== null) {
-        currentPage = nextPage;
+      const { people: newPeople, hasNextPage } = await getAllPeople({
+        withHidden: true,
+        minimumDays,
+        page: pageToLoad,
+      });
+      if (generation !== requestGeneration) {
+        return;
       }
-      nextPage = hasNextPage ? nextPage + 1 : null;
+      people = people.concat(newPeople);
+      currentPage = pageToLoad;
+      nextPage = hasNextPage ? pageToLoad + 1 : null;
     } catch (error) {
       handleError(error, $t('errors.failed_to_load_people'));
+    } finally {
+      isLoadingNextPage = false;
     }
   };
 
@@ -121,17 +145,28 @@
   };
 
   const onApplyMinimumDays = async (value: number) => {
+    const generation = ++requestGeneration;
     isLoadingPeople = true;
     try {
       const response = await getAllPeople({ withHidden: true, minimumDays: value });
+      if (generation !== requestGeneration) {
+        return;
+      }
       people = response.people;
       minimumDays = value;
       totalPeople = response.total;
       hiddenPeople = response.hidden;
       currentPage = 1;
       nextPage = response.hasNextPage ? 2 : null;
+      searchName = '';
+      searchedPeopleLocal = [];
+      const url = new URL($page.url);
+      url.searchParams.delete(QueryParameter.SEARCHED_PEOPLE);
+      replaceState(url, $page.state);
       sessionStorage.removeItem(SessionStorageKey.INFINITE_SCROLL_PAGE);
-      exploreViewSettings.set({ minimumDays: value });
+      sessionStorage.removeItem(SessionStorageKey.SCROLL_POSITION);
+      scrollContainer?.scroll({ top: 0, behavior: 'instant' });
+      peopleViewSettings.set({ minimumDays: value });
     } catch (error) {
       handleError(error, $t('errors.failed_to_load_people'));
     } finally {
@@ -330,14 +365,22 @@
         beforeClear: () => {
           sessionStorage.removeItem(SessionStorageKey.INFINITE_SCROLL_PAGE);
         },
-        beforeLoad: loadInitialScroll,
+        beforeScroll: loadInitialScroll,
       },
     ],
+    registerScrollContainer,
   ]}
 >
   {#snippet buttons()}
-    <div class="flex flex-wrap items-center justify-end gap-2">
-      <PeopleMinimumDaysFilter {minimumDays} isLoading={isLoadingPeople} onApply={onApplyMinimumDays} />
+    <div class="flex items-center justify-end gap-2">
+      <div class="hidden 2xl:block">
+        <PeopleMinimumDaysFilter
+          id="people-minimum-days-header"
+          {minimumDays}
+          isLoading={isLoadingPeople}
+          onApply={onApplyMinimumDays}
+        />
+      </div>
       <div class="hidden sm:block">
         <div class="h-10 w-40 lg:w-80">
           <SearchPeople
@@ -360,6 +403,15 @@
       >
     </div>
   {/snippet}
+
+  <div class="mb-2 flex justify-end 2xl:hidden">
+    <PeopleMinimumDaysFilter
+      id="people-minimum-days-content"
+      {minimumDays}
+      isLoading={isLoadingPeople}
+      onApply={onApplyMinimumDays}
+    />
+  </div>
 
   {#if countVisiblePeople > 0 && (!searchName || searchedPeopleLocal.length > 0)}
     <PeopleInfiniteScroll people={showPeople} hasNextPage={!!nextPage && !searchName} {loadNextPage}>
