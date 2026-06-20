@@ -38,6 +38,7 @@
   );
   let people = $state(data.response.people);
   let isLoadingPeople = $state(false);
+  let minimumDaysDraft = $state(data.minimumDays);
 
   let hasPeople = $derived(people.length > 0);
 
@@ -80,7 +81,7 @@
       <p class="font-medium dark:text-immich-dark-fg">{$t('people')}</p>
       <div class="flex items-center gap-2">
         <PeopleMinimumDaysFilter
-          minimumDays={data.minimumDays}
+          bind:minimumDays={minimumDaysDraft}
           isLoading={isLoadingPeople}
           onApply={onApplyMinimumDays}
         />

@@ -39,8 +39,8 @@ describe('People page minimum-days filter', () => {
   });
 
   it('refetches and replaces people when the filter is applied', async () => {
-    const firstPerson = personFactory.build({ id: 'first-person', name: 'First person' });
-    const filteredPerson = personFactory.build({ id: 'filtered-person', name: 'Filtered person' });
+    const firstPerson = personFactory.build({ id: 'first-person', name: 'First person', isHidden: false });
+    const filteredPerson = personFactory.build({ id: 'filtered-person', name: 'Filtered person', isHidden: false });
     vi.mocked(getAllPeople).mockResolvedValue({
       people: [filteredPerson],
       total: 1,

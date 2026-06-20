@@ -43,6 +43,7 @@
   let innerHeight = $state(0);
   let searchPeopleElement = $state<ReturnType<typeof SearchPeople>>();
   let minimumDays = $state(data.minimumDays);
+  let minimumDaysDraft = $state(data.minimumDays);
   let isLoadingPeople = $state(false);
   let totalPeople = $state(data.people.total);
   let hiddenPeople = $state(data.people.hidden);
@@ -376,7 +377,7 @@
       <div class="hidden 2xl:block">
         <PeopleMinimumDaysFilter
           id="people-minimum-days-header"
-          {minimumDays}
+          bind:minimumDays={minimumDaysDraft}
           isLoading={isLoadingPeople}
           onApply={onApplyMinimumDays}
         />
@@ -407,7 +408,7 @@
   <div class="mb-2 flex justify-end 2xl:hidden">
     <PeopleMinimumDaysFilter
       id="people-minimum-days-content"
-      {minimumDays}
+      bind:minimumDays={minimumDaysDraft}
       isLoading={isLoadingPeople}
       onApply={onApplyMinimumDays}
     />
