@@ -258,6 +258,25 @@ describe(StorageRepository.name, () => {
         total: 4_096_000,
       });
     });
+
+    it('should fall back to statfs when df reports more available than free space', async () => {
+      processMock.execFile.mockResolvedValue({
+        stdout: '/dev/disk 1000 900 500 90% /data/library',
+        stderr: '',
+      });
+      vi.spyOn(fs, 'statfs').mockResolvedValue({
+        bavail: 500,
+        bfree: 600,
+        blocks: 1000,
+        bsize: 4096,
+      } as Awaited<ReturnType<typeof fs.statfs>>);
+
+      await expect(sut.checkDiskUsage('/data/library')).resolves.toEqual({
+        available: 2_048_000,
+        free: 2_457_600,
+        total: 4_096_000,
+      });
+    });
   });
 
   describe('crawl', () => {

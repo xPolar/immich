@@ -63,7 +63,8 @@ const parseDfOutput = (output: string): DiskUsage => {
     totalBlocks < 0 ||
     usedBlocks < 0 ||
     availableBlocks < 0 ||
-    usedBlocks > totalBlocks
+    usedBlocks > totalBlocks ||
+    availableBlocks > totalBlocks - usedBlocks
   ) {
     throw new Error('Invalid df output');
   }
