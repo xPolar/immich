@@ -118,11 +118,11 @@ export class DuplicateService extends BaseService {
 
   @OnEvent({ name: 'ConfigUpdate', server: true })
   async onConfigUpdate({ oldConfig, newConfig }: ArgOf<'ConfigUpdate'>) {
-    if (
-      !oldConfig.machineLearning.duplicateDetection.autoStack &&
-      isDuplicateDetectionEnabled(newConfig.machineLearning) &&
-      newConfig.machineLearning.duplicateDetection.autoStack
-    ) {
+    const wasEnabled =
+      isDuplicateDetectionEnabled(oldConfig.machineLearning) && oldConfig.machineLearning.duplicateDetection.autoStack;
+    const isEnabled =
+      isDuplicateDetectionEnabled(newConfig.machineLearning) && newConfig.machineLearning.duplicateDetection.autoStack;
+    if (!wasEnabled && isEnabled) {
       await this.jobRepository.queue({ name: JobName.AssetAutoStackDuplicatesQueueAll, data: {} });
     }
   }
@@ -546,22 +546,30 @@ export class DuplicateService extends BaseService {
 
     let created = 0;
     for (const component of components) {
-      if (component.length < 2 || new Set(component.map(({ format }) => format)).size < 2) {
-        continue;
-      }
-
       const ownerIds = new Set(component.map(({ ownerId }) => ownerId));
       if (ownerIds.size !== 1) {
         this.logger.warn(`Refusing to auto-stack duplicate group ${id} with assets from multiple owners`);
         continue;
       }
 
+      const selectedFormats = new Set<AutoStackFormat>();
+      const selected = component.filter((asset) => {
+        if (selectedFormats.has(asset.format)) {
+          return false;
+        }
+        selectedFormats.add(asset.format);
+        return true;
+      });
+      if (selected.length < 2) {
+        continue;
+      }
+
       const stack = await this.stackRepository.create(
-        { ownerId: component[0].ownerId },
-        component.map(({ id }) => id),
+        { ownerId: selected[0].ownerId },
+        selected.map(({ id }) => id),
         { clearDuplicateId: true },
       );
-      await this.eventRepository.emit('StackCreate', { stackId: stack.id, userId: component[0].ownerId });
+      await this.eventRepository.emit('StackCreate', { stackId: stack.id, userId: selected[0].ownerId });
       created++;
     }
 

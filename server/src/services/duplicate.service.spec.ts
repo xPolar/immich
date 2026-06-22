@@ -614,6 +614,23 @@ describe(DuplicateService.name, () => {
       expect(mocks.job.queue).not.toHaveBeenCalled();
     });
 
+    it.each([
+      ['machine learning', (config: typeof defaults) => (config.machineLearning.enabled = false)],
+      ['CLIP', (config: typeof defaults) => (config.machineLearning.clip.enabled = false)],
+      ['duplicate detection', (config: typeof defaults) => (config.machineLearning.duplicateDetection.enabled = false)],
+    ])('should enqueue a backfill when re-enabling %s', async (_, disable) => {
+      const enabled = autoStackConfig();
+      const disabled = structuredClone(enabled);
+      disable(disabled);
+
+      await sut.onConfigUpdate({ oldConfig: disabled, newConfig: enabled });
+
+      expect(mocks.job.queue).toHaveBeenCalledWith({
+        name: JobName.AssetAutoStackDuplicatesQueueAll,
+        data: {},
+      });
+    });
+
     it('should fan out existing duplicate groups', async () => {
       mocks.systemMetadata.get.mockResolvedValue(autoStackConfig());
       mocks.duplicateRepository.streamForAutoStack.mockReturnValue(makeStream([{ id: 'group-1' }, { id: 'group-2' }]));
@@ -649,7 +666,7 @@ describe(DuplicateService.name, () => {
 
       await expect(sut.handleAutoStackDuplicates({ id: 'group-1' })).resolves.toBe(JobStatus.Success);
 
-      expect(mocks.stack.create).toHaveBeenCalledWith({ ownerId: 'user-id' }, ['jpeg-a', 'jpeg-b', 'png', 'raw'], {
+      expect(mocks.stack.create).toHaveBeenCalledWith({ ownerId: 'user-id' }, ['jpeg-a', 'png', 'raw'], {
         clearDuplicateId: true,
       });
       expect(mocks.event.emit).toHaveBeenCalledWith('StackCreate', {
@@ -668,6 +685,28 @@ describe(DuplicateService.name, () => {
 
       await expect(sut.handleAutoStackDuplicates({ id: 'group-1' })).resolves.toBe(JobStatus.Skipped);
       expect(mocks.stack.create).not.toHaveBeenCalled();
+    });
+
+    it('should omit lower-priority copies of a selected format', async () => {
+      mocks.systemMetadata.get.mockResolvedValue(autoStackConfig());
+      mocks.duplicateRepository.getForAutoStack.mockResolvedValue([
+        autoStackAsset('jpeg-small', 'small.jpg', { fileSizeInByte: 1000 }),
+        autoStackAsset('png', 'photo.png', { fileSizeInByte: 2000 }),
+        autoStackAsset('jpeg-large', 'large.jpeg', { fileSizeInByte: 3000 }),
+      ]);
+      mocks.media.getPerceptualHash.mockResolvedValue(1n);
+      mocks.stack.create.mockResolvedValue({ id: 'stack-id' } as any);
+
+      await expect(sut.handleAutoStackDuplicates({ id: 'group-1' })).resolves.toBe(JobStatus.Success);
+
+      expect(mocks.stack.create).toHaveBeenCalledWith({ ownerId: 'user-id' }, ['jpeg-large', 'png'], {
+        clearDuplicateId: true,
+      });
+      expect(mocks.stack.create).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.arrayContaining(['jpeg-small']),
+        expect.anything(),
+      );
     });
 
     it('should skip perceptually different mixed formats', async () => {

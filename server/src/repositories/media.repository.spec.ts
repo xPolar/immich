@@ -84,6 +84,31 @@ describe(MediaRepository.name, () => {
       expect(getHammingDistance(jpegHash, pngHash)).toBeLessThanOrEqual(6);
       expect(getHammingDistance(jpegHash, differentHash)).toBeGreaterThan(6);
     });
+
+    it('should match alpha-bearing and equivalently flattened opaque images', async () => {
+      const alpha = await sharp({
+        create: { width: 128, height: 128, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 0 } },
+      })
+        .composite([
+          {
+            input: await sharp({
+              create: { width: 64, height: 128, channels: 4, background: { r: 20, g: 80, b: 180, alpha: 0.7 } },
+            })
+              .png()
+              .toBuffer(),
+            left: 0,
+            top: 0,
+          },
+        ])
+        .png()
+        .toBuffer();
+      const opaque = await sharp(alpha).flatten({ background: '#ffffff' }).png().toBuffer();
+
+      const alphaHash = await sut.getPerceptualHash(alpha);
+      const opaqueHash = await sut.getPerceptualHash(opaque);
+
+      expect(getHammingDistance(alphaHash, opaqueHash)).toBeLessThanOrEqual(1);
+    });
   });
 
   describe('applyEdits (single actions)', () => {

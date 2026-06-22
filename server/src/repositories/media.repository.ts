@@ -159,6 +159,8 @@ export class MediaRepository {
       .rotate()
       .resize(width, height, { fit: 'fill' })
       .greyscale()
+      .flatten({ background: '#ffffff' })
+      .removeAlpha()
       .raw()
       .toBuffer({ resolveWithObject: true });
 
