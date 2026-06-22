@@ -188,7 +188,7 @@ export class SearchRepository {
       {
         takenAfter: DummyValue.DATE,
         lensModel: DummyValue.STRING,
-        withStacked: true,
+        withStacked: false,
         isStacked: true,
         isFavorite: true,
         userIds: [DummyValue.UUID],
@@ -229,7 +229,7 @@ export class SearchRepository {
       {
         takenAfter: DummyValue.DATE,
         lensModel: DummyValue.STRING,
-        withStacked: false,
+        withStacked: true,
         isFavorite: true,
         userIds: [DummyValue.UUID],
       },
