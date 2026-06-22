@@ -10263,7 +10263,7 @@
             "name": "isStacked",
             "required": false,
             "in": "query",
-            "description": "Filter by stacked status",
+            "description": "Filter by stacked status. Takes precedence over withStacked when both are provided",
             "schema": {
               "type": "boolean"
             }
@@ -20110,7 +20110,7 @@
             "type": "boolean"
           },
           "isStacked": {
-            "description": "Filter by stacked status",
+            "description": "Filter by stacked status. Takes precedence over withStacked when both are provided",
             "type": "boolean"
           },
           "lensModel": {
@@ -21828,7 +21828,7 @@
             "type": "boolean"
           },
           "isStacked": {
-            "description": "Filter by stacked status",
+            "description": "Filter by stacked status. Takes precedence over withStacked when both are provided",
             "type": "boolean"
           },
           "lensModel": {
@@ -23291,7 +23291,7 @@
             "type": "boolean"
           },
           "isStacked": {
-            "description": "Filter by stacked status",
+            "description": "Filter by stacked status. Takes precedence over withStacked when both are provided",
             "type": "boolean"
           },
           "language": {
@@ -23584,7 +23584,7 @@
             "type": "boolean"
           },
           "isStacked": {
-            "description": "Filter by stacked status",
+            "description": "Filter by stacked status. Takes precedence over withStacked when both are provided",
             "type": "boolean"
           },
           "lensModel": {

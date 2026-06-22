@@ -1636,7 +1636,7 @@ export type MetadataSearchDto = {
     isNotInAlbum?: boolean;
     /** Filter by offline status */
     isOffline?: boolean;
-    /** Filter by stacked status */
+    /** Filter by stacked status. Takes precedence over withStacked when both are provided */
     isStacked?: boolean;
     /** Filter by lens model */
     lensModel?: string | null;
@@ -1759,7 +1759,7 @@ export type RandomSearchDto = {
     isNotInAlbum?: boolean;
     /** Filter by offline status */
     isOffline?: boolean;
-    /** Filter by stacked status */
+    /** Filter by stacked status. Takes precedence over withStacked when both are provided */
     isStacked?: boolean;
     /** Filter by lens model */
     lensModel?: string | null;
@@ -1825,7 +1825,7 @@ export type SmartSearchDto = {
     isNotInAlbum?: boolean;
     /** Filter by offline status */
     isOffline?: boolean;
-    /** Filter by stacked status */
+    /** Filter by stacked status. Takes precedence over withStacked when both are provided */
     isStacked?: boolean;
     /** Search language code */
     language?: string;
@@ -1897,7 +1897,7 @@ export type StatisticsSearchDto = {
     isNotInAlbum?: boolean;
     /** Filter by offline status */
     isOffline?: boolean;
-    /** Filter by stacked status */
+    /** Filter by stacked status. Takes precedence over withStacked when both are provided */
     isStacked?: boolean;
     /** Filter by lens model */
     lensModel?: string | null;

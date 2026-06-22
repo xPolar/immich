@@ -166,7 +166,7 @@ class MetadataSearchDto {
   ///
   Optional<bool?> isOffline;
 
-  /// Filter by stacked status
+  /// Filter by stacked status. Takes precedence over withStacked when both are provided
   ///
   /// Please note: This property should have been non-nullable! Since the specification file
   /// does not include a default value (using the "default:" property), however, the generated

@@ -389,7 +389,7 @@ class SearchApi {
   ///   Filter by offline status
   ///
   /// * [bool] isStacked:
-  ///   Filter by stacked status
+  ///   Filter by stacked status. Takes precedence over withStacked when both are provided
   ///
   /// * [String] lensModel:
   ///   Filter by lens model
@@ -611,7 +611,7 @@ class SearchApi {
   ///   Filter by offline status
   ///
   /// * [bool] isStacked:
-  ///   Filter by stacked status
+  ///   Filter by stacked status. Takes precedence over withStacked when both are provided
   ///
   /// * [String] lensModel:
   ///   Filter by lens model
