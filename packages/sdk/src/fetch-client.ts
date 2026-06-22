@@ -1636,6 +1636,8 @@ export type MetadataSearchDto = {
     isNotInAlbum?: boolean;
     /** Filter by offline status */
     isOffline?: boolean;
+    /** Filter by stacked status. Takes precedence over withStacked when both are provided */
+    isStacked?: boolean;
     /** Filter by lens model */
     lensModel?: string | null;
     /** Library ID to filter by */
@@ -1757,6 +1759,8 @@ export type RandomSearchDto = {
     isNotInAlbum?: boolean;
     /** Filter by offline status */
     isOffline?: boolean;
+    /** Filter by stacked status. Takes precedence over withStacked when both are provided */
+    isStacked?: boolean;
     /** Filter by lens model */
     lensModel?: string | null;
     /** Library ID to filter by */
@@ -1821,6 +1825,8 @@ export type SmartSearchDto = {
     isNotInAlbum?: boolean;
     /** Filter by offline status */
     isOffline?: boolean;
+    /** Filter by stacked status. Takes precedence over withStacked when both are provided */
+    isStacked?: boolean;
     /** Search language code */
     language?: string;
     /** Filter by lens model */
@@ -1891,6 +1897,8 @@ export type StatisticsSearchDto = {
     isNotInAlbum?: boolean;
     /** Filter by offline status */
     isOffline?: boolean;
+    /** Filter by stacked status. Takes precedence over withStacked when both are provided */
+    isStacked?: boolean;
     /** Filter by lens model */
     lensModel?: string | null;
     /** Library ID to filter by */
@@ -2432,6 +2440,10 @@ export type ClipConfig = {
     modelName: string;
 };
 export type DuplicateDetectionConfig = {
+    /** Whether to automatically stack visually identical mixed-format images */
+    autoStack: boolean;
+    /** Maximum perceptual hash Hamming distance for automatic stacking */
+    autoStackThreshold: number;
     /** Whether the task is enabled */
     enabled: boolean;
     /** Maximum distance threshold for duplicate detection */
@@ -5676,7 +5688,7 @@ export function getExploreData(opts?: Oazapfts.RequestOpts) {
 /**
  * Search large assets
  */
-export function searchLargeAssets({ albumIds, city, country, createdAfter, createdBefore, isEncoded, isFavorite, isMotion, isNotInAlbum, isOffline, lensModel, libraryId, make, minFileSize, model, ocr, personIds, rating, size, state, tagIds, takenAfter, takenBefore, trashedAfter, trashedBefore, $type, updatedAfter, updatedBefore, visibility, withDeleted, withExif }: {
+export function searchLargeAssets({ albumIds, city, country, createdAfter, createdBefore, isEncoded, isFavorite, isMotion, isNotInAlbum, isOffline, isStacked, lensModel, libraryId, make, minFileSize, model, ocr, personIds, rating, size, state, tagIds, takenAfter, takenBefore, trashedAfter, trashedBefore, $type, updatedAfter, updatedBefore, visibility, withDeleted, withExif }: {
     albumIds?: string[];
     city?: string | null;
     country?: string | null;
@@ -5687,6 +5699,7 @@ export function searchLargeAssets({ albumIds, city, country, createdAfter, creat
     isMotion?: boolean;
     isNotInAlbum?: boolean;
     isOffline?: boolean;
+    isStacked?: boolean;
     lensModel?: string | null;
     libraryId?: string | null;
     make?: string | null;
@@ -5723,6 +5736,7 @@ export function searchLargeAssets({ albumIds, city, country, createdAfter, creat
         isMotion,
         isNotInAlbum,
         isOffline,
+        isStacked,
         lensModel,
         libraryId,
         make,
@@ -7423,6 +7437,8 @@ export enum JobName {
     AssetDetectFaces = "AssetDetectFaces",
     AssetDetectDuplicatesQueueAll = "AssetDetectDuplicatesQueueAll",
     AssetDetectDuplicates = "AssetDetectDuplicates",
+    AssetAutoStackDuplicatesQueueAll = "AssetAutoStackDuplicatesQueueAll",
+    AssetAutoStackDuplicates = "AssetAutoStackDuplicates",
     AssetEditThumbnailGeneration = "AssetEditThumbnailGeneration",
     AssetEncodeVideoQueueAll = "AssetEncodeVideoQueueAll",
     AssetEncodeVideo = "AssetEncodeVideo",

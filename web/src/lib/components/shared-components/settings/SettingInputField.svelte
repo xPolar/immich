@@ -15,6 +15,7 @@
     description?: string;
     title?: string;
     required?: boolean;
+    integer?: boolean;
     disabled?: boolean;
     isEdited?: boolean;
     autofocus?: boolean;
@@ -40,6 +41,7 @@
     description = '',
     title = '',
     required = false,
+    integer = false,
     disabled = false,
     isEdited = false,
     autofocus = false,
@@ -65,6 +67,9 @@
       }
       if (newValue > max) {
         newValue = max;
+      }
+      if (integer) {
+        newValue = Math.round(newValue);
       }
       value = newValue;
     }

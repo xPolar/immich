@@ -1,6 +1,9 @@
 <script lang="ts">
   import MenuOption from '$lib/components/shared-components/context-menu/MenuOption.svelte';
-  import { assetMultiSelectManager } from '$lib/managers/asset-multi-select-manager.svelte';
+  import {
+    assetMultiSelectManager,
+    type AssetMultiSelectManager,
+  } from '$lib/managers/asset-multi-select-manager.svelte';
   import { handleError } from '$lib/utils/handle-error';
   import { getAlbumInfo, removeAssetFromAlbum, type AlbumResponseDto } from '@immich/sdk';
   import { IconButton, modalManager, toastManager } from '@immich/ui';
@@ -12,12 +15,19 @@
     onRemove: ((assetIds: string[]) => void) | undefined;
     assetIds?: string[];
     menuItem?: boolean;
+    assetInteraction?: AssetMultiSelectManager;
   }
 
-  let { album = $bindable(), onRemove, assetIds, menuItem = false }: Props = $props();
+  let {
+    album = $bindable(),
+    onRemove,
+    assetIds,
+    menuItem = false,
+    assetInteraction = assetMultiSelectManager,
+  }: Props = $props();
 
   const removeFromAlbum = async () => {
-    const ids = assetIds ?? assetMultiSelectManager.assets.map(({ id }) => id) ?? [];
+    const ids = assetIds ?? assetInteraction.assets.map(({ id }) => id) ?? [];
 
     const isConfirmed = await modalManager.showDialog({
       prompt: $t('remove_assets_album_confirmation', { values: { count: ids.length } }),
@@ -40,7 +50,7 @@
       const count = results.filter(({ success }) => success).length;
       toastManager.primary($t('assets_removed_count', { values: { count } }));
 
-      assetMultiSelectManager.clear();
+      assetInteraction.clear();
     } catch (error) {
       handleError(error, $t('errors.error_removing_assets_from_album'));
     }

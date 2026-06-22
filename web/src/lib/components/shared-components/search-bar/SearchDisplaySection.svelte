@@ -27,6 +27,10 @@
         <Checkbox id="favorites-checkbox" size="tiny" bind:checked={filters.isFavorite} />
         <Label label={$t('favorites')} for="favorites-checkbox" class="text-sm font-normal" />
       </div>
+      <div class="flex items-center gap-2">
+        <Checkbox id="stacked-checkbox" size="tiny" bind:checked={filters.isStacked} />
+        <Label label={$t('stacked')} for="stacked-checkbox" class="text-sm font-normal" />
+      </div>
     </div>
   </fieldset>
 </div>

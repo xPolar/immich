@@ -152,6 +152,30 @@ export class MediaRepository {
     return this.getImageDecodingPipeline(input, options).raw().toBuffer({ resolveWithObject: true });
   }
 
+  async getPerceptualHash(input: string | Buffer): Promise<bigint> {
+    const width = 9;
+    const height = 8;
+    const { data } = await sharp(input)
+      .rotate()
+      .resize(width, height, { fit: 'fill' })
+      .greyscale()
+      .flatten({ background: '#ffffff' })
+      .removeAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+
+    let hash = 0n;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width - 1; x++) {
+        const index = y * width + x;
+        if (data[index] > data[index + 1]) {
+          hash |= 1n << BigInt(y * (width - 1) + x);
+        }
+      }
+    }
+    return hash;
+  }
+
   private applyEdits(pipeline: sharp.Sharp, edits: AssetEditActionItem[]): sharp.Sharp {
     const crop = edits.find((edit) => edit.action === 'crop');
     if (crop) {

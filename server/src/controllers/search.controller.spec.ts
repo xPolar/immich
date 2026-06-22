@@ -120,6 +120,18 @@ describe(SearchController.name, () => {
       );
     });
 
+    it('should reject isStacked as not a boolean', async () => {
+      const { status, body } = await request(ctx.getHttpServer())
+        .post('/search/metadata')
+        .send({ isStacked: 'immich' });
+      expect(status).toBe(400);
+      expect(body).toEqual(
+        errorDto.validationError([
+          { path: ['isStacked'], message: 'Invalid input: expected boolean, received string' },
+        ]),
+      );
+    });
+
     describe('POST /search/random', () => {
       it('should be an authenticated route', async () => {
         await request(ctx.getHttpServer()).post('/search/random');

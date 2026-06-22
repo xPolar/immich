@@ -1,4 +1,4 @@
-import { render } from '@testing-library/svelte';
+import { fireEvent, render } from '@testing-library/svelte';
 import { getIntersectionObserverMock } from '$lib/__mocks__/intersection-observer.mock';
 import Thumbnail from '$lib/components/assets/thumbnail/Thumbnail.svelte';
 import { getTabbable } from '$lib/utils/focus-util';
@@ -23,13 +23,14 @@ vi.hoisted(() => {
   });
 });
 
+vi.mock('$lib/utils/navigation', () => ({
+  currentUrlReplaceAssetId: vi.fn(),
+  isSharedLinkRoute: vi.fn().mockReturnValue(false),
+}));
+
 describe('Thumbnail component', () => {
   beforeAll(() => {
     vi.stubGlobal('IntersectionObserver', getIntersectionObserverMock());
-    vi.mock('$lib/utils/navigation', () => ({
-      currentUrlReplaceAssetId: vi.fn(),
-      isSharedLinkRoute: vi.fn().mockReturnValue(false),
-    }));
   });
 
   it('should only contain a single tabbable element (the container)', () => {
@@ -57,5 +58,60 @@ describe('Thumbnail component', () => {
 
     const thumbhash = sut.getByTestId('thumbhash');
     expect(thumbhash).not.toBeFalsy();
+  });
+
+  it('opens a custom context menu at the pointer position', () => {
+    const asset = assetFactory.build({ originalPath: 'image.jpg', originalMimeType: 'image/jpeg' });
+    const onShowContextMenu = vi.fn();
+    const sut = render(Thumbnail, { asset, onShowContextMenu });
+    const container = sut.getByRole('link');
+
+    const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 120, clientY: 80 });
+    container.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(onShowContextMenu).toHaveBeenCalledWith({ x: 120, y: 80 }, expect.objectContaining({ id: asset.id }));
+  });
+
+  it('opens a custom context menu from the keyboard', async () => {
+    const asset = assetFactory.build({ originalPath: 'image.jpg', originalMimeType: 'image/jpeg' });
+    const onShowContextMenu = vi.fn();
+    const sut = render(Thumbnail, { asset, onShowContextMenu });
+    const container = sut.getByRole('link');
+    vi.spyOn(container, 'getBoundingClientRect').mockReturnValue({
+      x: 10,
+      y: 20,
+      width: 200,
+      height: 100,
+      top: 20,
+      right: 210,
+      bottom: 120,
+      left: 10,
+      toJSON: () => {},
+    });
+
+    await fireEvent.keyDown(container, { key: 'F10', shiftKey: true });
+
+    expect(onShowContextMenu).toHaveBeenCalledWith({ x: 110, y: 70 }, expect.objectContaining({ id: asset.id }));
+  });
+
+  it('does not open the context menu after selecting with a long press', async () => {
+    vi.useFakeTimers();
+    const asset = assetFactory.build({ originalPath: 'image.jpg', originalMimeType: 'image/jpeg' });
+    const onSelect = vi.fn();
+    const onShowContextMenu = vi.fn();
+    const sut = render(Thumbnail, { asset, onSelect, onShowContextMenu });
+    const container = sut.getByRole('link');
+
+    await fireEvent.pointerDown(container, { clientX: 10, clientY: 10 });
+    vi.advanceTimersByTime(350);
+
+    const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 });
+    container.dispatchEvent(event);
+
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: asset.id }));
+    expect(onShowContextMenu).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(true);
+    vi.useRealTimers();
   });
 });

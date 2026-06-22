@@ -14,6 +14,10 @@ const BaseSearchSchema = z.object({
   isFavorite: z.boolean().optional().describe('Filter by favorite status'),
   isMotion: z.boolean().optional().describe('Filter by motion photo status'),
   isOffline: z.boolean().optional().describe('Filter by offline status'),
+  isStacked: z
+    .boolean()
+    .optional()
+    .describe('Filter by stacked status. Takes precedence over withStacked when both are provided'),
   visibility: AssetVisibilitySchema.optional(),
   createdBefore: isoDatetimeToDate.optional().describe('Filter by creation date (before)'),
   createdAfter: isoDatetimeToDate.optional().describe('Filter by creation date (after)'),

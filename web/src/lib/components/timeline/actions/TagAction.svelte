@@ -1,7 +1,10 @@
 <script lang="ts">
   import { shortcut } from '$lib/actions/shortcut';
   import MenuOption from '$lib/components/shared-components/context-menu/MenuOption.svelte';
-  import { assetMultiSelectManager } from '$lib/managers/asset-multi-select-manager.svelte';
+  import {
+    assetMultiSelectManager,
+    type AssetMultiSelectManager,
+  } from '$lib/managers/asset-multi-select-manager.svelte';
   import AssetTagModal from '$lib/modals/AssetTagModal.svelte';
   import { IconButton, modalManager } from '@immich/ui';
   import { mdiTagMultipleOutline } from '@mdi/js';
@@ -9,18 +12,19 @@
 
   interface Props {
     menuItem?: boolean;
+    assetInteraction?: AssetMultiSelectManager;
   }
 
-  let { menuItem = false }: Props = $props();
+  let { menuItem = false, assetInteraction = assetMultiSelectManager }: Props = $props();
 
   const text = $t('tag');
   const icon = mdiTagMultipleOutline;
 
   const handleTagAssets = async () => {
-    const assets = assetMultiSelectManager.ownedAssets;
+    const assets = assetInteraction.ownedAssets;
     const didUpdate = await modalManager.show(AssetTagModal, { assetIds: assets.map(({ id }) => id) });
     if (didUpdate) {
-      assetMultiSelectManager.clear();
+      assetInteraction.clear();
     }
   };
 </script>

@@ -5,6 +5,7 @@
   import { mediaQueryManager } from '$lib/stores/media-query-manager.svelte';
   import { locale, playVideoThumbnailOnHover } from '$lib/stores/preferences.store';
   import { getAssetMediaUrl, getAssetPlaybackUrl } from '$lib/utils';
+  import { getContextMenuPositionFromBoundingRect, type ContextMenuPosition } from '$lib/utils/context-menu';
   import { moveFocus } from '$lib/utils/focus-util';
   import { currentUrlReplaceAssetId } from '$lib/utils/navigation';
   import { getAltText } from '$lib/utils/thumbnail-util';
@@ -47,6 +48,7 @@
     onClick?: (asset: TimelineAsset) => void;
     onPreview?: (asset: TimelineAsset) => void;
     onSelect?: (asset: TimelineAsset) => void;
+    onShowContextMenu?: (position: ContextMenuPosition, asset: TimelineAsset) => void;
     onMouseEvent?: (event: { isMouseOver: boolean; selectedGroupIndex: number }) => void;
   }
 
@@ -67,6 +69,7 @@
     onClick = undefined,
     onPreview = undefined,
     onSelect = undefined,
+    onShowContextMenu = undefined,
     onMouseEvent = undefined,
     imageClass = '',
     brokenAssetClass = '',
@@ -79,6 +82,7 @@
   let loaded = $state(false);
   let thumbError = $state(false);
   let skipFade = $state(false);
+  let suppressNextContextMenu = false;
 
   let width = $derived(thumbnailSize || thumbnailWidth || 235);
   let height = $derived(thumbnailSize || thumbnailHeight || 235);
@@ -112,6 +116,35 @@
     callClickHandlers();
   };
 
+  const handleContextMenu = (event: MouseEvent) => {
+    if (suppressNextContextMenu) {
+      event.preventDefault();
+      event.stopPropagation();
+      suppressNextContextMenu = false;
+      return;
+    }
+
+    if (!onShowContextMenu) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    onShowContextMenu({ x: event.clientX, y: event.clientY }, $state.snapshot(asset));
+  };
+
+  const handleContextMenuKey = (event: KeyboardEvent) => {
+    if (!onShowContextMenu || !(event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey))) {
+      return;
+    }
+
+    event.preventDefault();
+    const rect = element?.getBoundingClientRect();
+    if (rect) {
+      onShowContextMenu(getContextMenuPositionFromBoundingRect(rect), $state.snapshot(asset));
+    }
+  };
+
   const onMouseEnter = () => {
     if (usingMobileDevice) {
       return;
@@ -127,19 +160,12 @@
 
   let timer: ReturnType<typeof setTimeout> | null = null;
 
-  const preventContextMenu = (evt: Event) => evt.preventDefault();
-  const disposeables: (() => void)[] = [];
-
   const clearLongPressTimer = () => {
     if (!timer) {
       return;
     }
     clearTimeout(timer);
     timer = null;
-    for (const dispose of disposeables) {
-      dispose();
-    }
-    disposeables.length = 0;
   };
 
   let startX: number = 0;
@@ -151,11 +177,11 @@
       startX = evt.clientX;
       startY = evt.clientY;
       didPress = false;
+      suppressNextContextMenu = false;
       // 350ms for longpress. For reference: iOS uses 500ms for default long press, or 200ms for fast long press.
       timer = setTimeout(() => {
         onLongPress();
-        element.addEventListener('contextmenu', preventContextMenu, { once: true });
-        disposeables.push(() => element.removeEventListener('contextmenu', preventContextMenu));
+        suppressNextContextMenu = true;
         didPress = true;
       }, 350);
     };
@@ -213,6 +239,7 @@
   onmouseleave={onMouseLeave}
   use:longPress={{ onLongPress: () => onSelect?.($state.snapshot(asset)) }}
   onkeydown={(evt) => {
+    handleContextMenuKey(evt);
     if (evt.key === 'Enter') {
       callClickHandlers();
     }
@@ -224,6 +251,7 @@
     }
   }}
   onclick={handleClick}
+  oncontextmenu={handleContextMenu}
   bind:this={element}
   data-asset={asset.id}
   data-thumbnail-focus-container

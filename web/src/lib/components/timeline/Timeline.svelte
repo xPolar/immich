@@ -1,6 +1,7 @@
 <script lang="ts">
   import { afterNavigate, beforeNavigate } from '$app/navigation';
   import { page } from '$app/state';
+  import AssetContextMenu from '$lib/components/assets/AssetContextMenu.svelte';
   import Thumbnail from '$lib/components/assets/thumbnail/Thumbnail.svelte';
   import Month from '$lib/components/timeline/Month.svelte';
   import Scrubber from '$lib/components/timeline/Scrubber.svelte';
@@ -11,7 +12,10 @@
   import HotModuleReload from '$lib/elements/HotModuleReload.svelte';
   import Portal from '$lib/elements/Portal.svelte';
   import Skeleton from '$lib/elements/Skeleton.svelte';
-  import type { AssetMultiSelectManager } from '$lib/managers/asset-multi-select-manager.svelte';
+  import {
+    assetMultiSelectManager,
+    type AssetMultiSelectManager,
+  } from '$lib/managers/asset-multi-select-manager.svelte';
   import { assetViewerManager } from '$lib/managers/asset-viewer-manager.svelte';
   import type { TimelineDay } from '$lib/managers/timeline-manager/timeline-day.svelte';
   import { isIntersecting } from '$lib/managers/timeline-manager/internal/intersection-support.svelte';
@@ -21,6 +25,8 @@
   import { assetsSnapshot } from '$lib/managers/timeline-manager/utils.svelte';
   import { keyboardManager } from '$lib/stores/keyboard-manager.svelte';
   import { mediaQueryManager } from '$lib/stores/media-query-manager.svelte';
+  import { updateStackedAssetInTimeline, updateUnstackedAssetInTimeline } from '$lib/utils/actions';
+  import type { ContextMenuPosition } from '$lib/utils/context-menu';
   import { isAssetViewerRoute, navigate } from '$lib/utils/navigation';
   import { getTimes, type ScrubberListener } from '$lib/utils/timeline-util';
   import { type AlbumResponseDto, type PersonResponseDto, type UserResponseDto } from '@immich/sdk';
@@ -100,6 +106,9 @@
   // Overall scroll percentage through the entire timeline (0-1)
   let timelineScrollPercent: number = $state(0);
   let scrubberWidth = $state(0);
+  let contextMenuAsset: TimelineAsset | undefined = $state();
+  let contextMenuPosition: ContextMenuPosition = $state({ x: 0, y: 0 });
+  let isContextMenuOpen = $state(false);
 
   const isEmpty = $derived(timelineManager.isInitialized && timelineManager.months.length === 0);
   const maxMd = $derived(mediaQueryManager.maxMd);
@@ -470,6 +479,16 @@
     assetInteraction.setAssetSelectionStart(deselect ? null : asset);
   };
 
+  const showAssetContextMenu = (position: ContextMenuPosition, asset: TimelineAsset) => {
+    contextMenuAsset = asset;
+    contextMenuPosition = position;
+    isContextMenuOpen = true;
+  };
+
+  const viewContextMenuAsset = (asset: TimelineAsset) => {
+    void navigate({ targetRoute: 'current', assetId: asset.id });
+  };
+
   const selectAssetCandidates = async (endAsset: TimelineAsset) => {
     if (!keyboardManager.shift) {
       return;
@@ -683,6 +702,9 @@
                   }
                   void onSelectAssets(asset);
                 }}
+                onShowContextMenu={!isSelectionMode && assetInteraction === assetMultiSelectManager
+                  ? showAssetContextMenu
+                  : undefined}
                 onMouseEvent={() => handleSelectAssetCandidates(asset)}
                 onPreview={isSelectionMode || assetInteraction.selectionActive
                   ? (asset) => void navigate({ targetRoute: 'current', assetId: asset.id })
@@ -710,6 +732,27 @@
 </section>
 
 <Portal target="body">
+  <AssetContextMenu
+    asset={contextMenuAsset}
+    {album}
+    position={contextMenuPosition}
+    isOpen={isContextMenuOpen}
+    onClose={() => (isContextMenuOpen = false)}
+    onView={viewContextMenuAsset}
+    onFavorite={(ids, isFavorite) => timelineManager.update(ids, (asset) => (asset.isFavorite = isFavorite))}
+    onArchive={(ids, visibility) => timelineManager.update(ids, (asset) => (asset.visibility = visibility))}
+    onDelete={(ids) => timelineManager.removeAssets(ids)}
+    onUndoDelete={(assets) => timelineManager.upsertAssets(assets)}
+    onRestore={(ids) => timelineManager.removeAssets(ids)}
+    onSetVisibility={(ids) => {
+      timelineManager.removeAssets(ids);
+      assetInteraction.clear();
+    }}
+    onStack={(result) => updateStackedAssetInTimeline(timelineManager, result)}
+    onUnstack={(assets) => updateUnstackedAssetInTimeline(timelineManager, assets)}
+    onRemoveFromAlbum={(ids) => timelineManager.removeAssets(ids)}
+  />
+
   {#if assetViewerManager.isViewing}
     <TimelineAssetViewer bind:invisible {timelineManager} {removeAction} {withStacked} {isShared} {album} {person} />
   {/if}

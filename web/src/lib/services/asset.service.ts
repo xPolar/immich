@@ -35,7 +35,7 @@ import {
 } from '@mdi/js';
 import type { MessageFormatter } from 'svelte-i18n';
 import { ProjectionType } from '$lib/constants';
-import { assetMultiSelectManager } from '$lib/managers/asset-multi-select-manager.svelte';
+import { assetMultiSelectManager, type AssetMultiSelectManager } from '$lib/managers/asset-multi-select-manager.svelte';
 import { assetViewerManager } from '$lib/managers/asset-viewer-manager.svelte';
 import { authManager } from '$lib/managers/auth-manager.svelte';
 import { eventManager } from '$lib/managers/event-manager.svelte';
@@ -48,12 +48,15 @@ import { downloadUrl } from '$lib/utils';
 import { handleError } from '$lib/utils/handle-error';
 import { getFormatter } from '$lib/utils/i18n';
 
-export const getAssetBulkActions = ($t: MessageFormatter) => {
-  const ownedAssets = assetMultiSelectManager.ownedAssets;
+export const getAssetBulkActions = (
+  $t: MessageFormatter,
+  assetInteraction: AssetMultiSelectManager = assetMultiSelectManager,
+) => {
+  const ownedAssets = assetInteraction.ownedAssets;
 
   const onAction = async (name: AssetJobName) => {
     await handleRunAssetJob({ name, assetIds: ownedAssets.map(({ id }) => id) });
-    assetMultiSelectManager.clear();
+    assetInteraction.clear();
   };
 
   const AddToAlbum: ActionItem = {
@@ -61,7 +64,7 @@ export const getAssetBulkActions = ($t: MessageFormatter) => {
     icon: mdiPlus,
     shortcuts: [{ key: 'l' }],
     onAction: () =>
-      modalManager.show(AssetAddToAlbumModal, { assetIds: assetMultiSelectManager.assets.map((asset) => asset.id) }),
+      modalManager.show(AssetAddToAlbumModal, { assetIds: assetInteraction.assets.map((asset) => asset.id) }),
   };
 
   const RefreshFacesJob: ActionItem = {

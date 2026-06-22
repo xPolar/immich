@@ -1,6 +1,9 @@
 <script lang="ts">
   import MenuOption from '$lib/components/shared-components/context-menu/MenuOption.svelte';
-  import { assetMultiSelectManager } from '$lib/managers/asset-multi-select-manager.svelte';
+  import {
+    assetMultiSelectManager,
+    type AssetMultiSelectManager,
+  } from '$lib/managers/asset-multi-select-manager.svelte';
   import AssetSelectionChangeDateModal from '$lib/modals/AssetSelectionChangeDateModal.svelte';
   import { fromTimelinePlainDateTime } from '$lib/utils/timeline-util';
   import { modalManager } from '@immich/ui';
@@ -10,19 +13,20 @@
 
   type Props = {
     menuItem?: boolean;
+    assetInteraction?: AssetMultiSelectManager;
   };
 
-  let { menuItem = false }: Props = $props();
+  let { menuItem = false, assetInteraction = assetMultiSelectManager }: Props = $props();
 
   const handleChangeDate = async () => {
-    const assets = assetMultiSelectManager.ownedAssets;
+    const assets = assetInteraction.ownedAssets;
     const initialDate = assets.length === 1 ? fromTimelinePlainDateTime(assets[0].localDateTime) : DateTime.now();
     const success = await modalManager.show(AssetSelectionChangeDateModal, {
       initialDate,
       assets,
     });
     if (success) {
-      assetMultiSelectManager.clear();
+      assetInteraction.clear();
     }
   };
 </script>

@@ -23,6 +23,7 @@ class RandomSearchDto {
     this.isMotion = const Optional.absent(),
     this.isNotInAlbum = const Optional.absent(),
     this.isOffline = const Optional.absent(),
+    this.isStacked = const Optional.absent(),
     this.lensModel = const Optional.absent(),
     this.libraryId = const Optional.absent(),
     this.make = const Optional.absent(),
@@ -118,6 +119,15 @@ class RandomSearchDto {
   /// Consider adding a "default:" property in the specification file to hide this note.
   ///
   Optional<bool?> isOffline;
+
+  /// Filter by stacked status. Takes precedence over withStacked when both are provided
+  ///
+  /// Please note: This property should have been non-nullable! Since the specification file
+  /// does not include a default value (using the "default:" property), however, the generated
+  /// source code must fall back to having a nullable type.
+  /// Consider adding a "default:" property in the specification file to hide this note.
+  ///
+  Optional<bool?> isStacked;
 
   /// Filter by lens model
   Optional<String?> lensModel;
@@ -285,6 +295,7 @@ class RandomSearchDto {
     other.isMotion == isMotion &&
     other.isNotInAlbum == isNotInAlbum &&
     other.isOffline == isOffline &&
+    other.isStacked == isStacked &&
     other.lensModel == lensModel &&
     other.libraryId == libraryId &&
     other.make == make &&
@@ -321,6 +332,7 @@ class RandomSearchDto {
     (isMotion == null ? 0 : isMotion!.hashCode) +
     (isNotInAlbum == null ? 0 : isNotInAlbum!.hashCode) +
     (isOffline == null ? 0 : isOffline!.hashCode) +
+    (isStacked == null ? 0 : isStacked!.hashCode) +
     (lensModel == null ? 0 : lensModel!.hashCode) +
     (libraryId == null ? 0 : libraryId!.hashCode) +
     (make == null ? 0 : make!.hashCode) +
@@ -345,7 +357,7 @@ class RandomSearchDto {
     (withStacked == null ? 0 : withStacked!.hashCode);
 
   @override
-  String toString() => 'RandomSearchDto[albumIds=$albumIds, city=$city, country=$country, createdAfter=$createdAfter, createdBefore=$createdBefore, isEncoded=$isEncoded, isFavorite=$isFavorite, isMotion=$isMotion, isNotInAlbum=$isNotInAlbum, isOffline=$isOffline, lensModel=$lensModel, libraryId=$libraryId, make=$make, model=$model, ocr=$ocr, personIds=$personIds, rating=$rating, size=$size, state=$state, tagIds=$tagIds, takenAfter=$takenAfter, takenBefore=$takenBefore, trashedAfter=$trashedAfter, trashedBefore=$trashedBefore, type=$type, updatedAfter=$updatedAfter, updatedBefore=$updatedBefore, visibility=$visibility, withDeleted=$withDeleted, withExif=$withExif, withPeople=$withPeople, withStacked=$withStacked]';
+  String toString() => 'RandomSearchDto[albumIds=$albumIds, city=$city, country=$country, createdAfter=$createdAfter, createdBefore=$createdBefore, isEncoded=$isEncoded, isFavorite=$isFavorite, isMotion=$isMotion, isNotInAlbum=$isNotInAlbum, isOffline=$isOffline, isStacked=$isStacked, lensModel=$lensModel, libraryId=$libraryId, make=$make, model=$model, ocr=$ocr, personIds=$personIds, rating=$rating, size=$size, state=$state, tagIds=$tagIds, takenAfter=$takenAfter, takenBefore=$takenBefore, trashedAfter=$trashedAfter, trashedBefore=$trashedBefore, type=$type, updatedAfter=$updatedAfter, updatedBefore=$updatedBefore, visibility=$visibility, withDeleted=$withDeleted, withExif=$withExif, withPeople=$withPeople, withStacked=$withStacked]';
 
   Map<String, dynamic> toJson() {
     final json = <String, dynamic>{};
@@ -392,6 +404,10 @@ class RandomSearchDto {
     if (this.isOffline.isPresent) {
       final value = this.isOffline.value;
       json[r'isOffline'] = value;
+    }
+    if (this.isStacked.isPresent) {
+      final value = this.isStacked.value;
+      json[r'isStacked'] = value;
     }
     if (this.lensModel.isPresent) {
       final value = this.lensModel.value;
@@ -517,6 +533,7 @@ class RandomSearchDto {
         isMotion: json.containsKey(r'isMotion') ? Optional.present(mapValueOfType<bool>(json, r'isMotion')) : const Optional.absent(),
         isNotInAlbum: json.containsKey(r'isNotInAlbum') ? Optional.present(mapValueOfType<bool>(json, r'isNotInAlbum')) : const Optional.absent(),
         isOffline: json.containsKey(r'isOffline') ? Optional.present(mapValueOfType<bool>(json, r'isOffline')) : const Optional.absent(),
+        isStacked: json.containsKey(r'isStacked') ? Optional.present(mapValueOfType<bool>(json, r'isStacked')) : const Optional.absent(),
         lensModel: json.containsKey(r'lensModel') ? Optional.present(mapValueOfType<String>(json, r'lensModel')) : const Optional.absent(),
         libraryId: json.containsKey(r'libraryId') ? Optional.present(mapValueOfType<String>(json, r'libraryId')) : const Optional.absent(),
         make: json.containsKey(r'make') ? Optional.present(mapValueOfType<String>(json, r'make')) : const Optional.absent(),

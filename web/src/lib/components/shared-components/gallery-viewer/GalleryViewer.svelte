@@ -3,10 +3,14 @@
   import { shortcuts, type ShortcutOptions } from '$lib/actions/shortcut';
   import type { Action } from '$lib/components/asset-viewer/actions/action';
   import type { AssetCursor } from '$lib/components/asset-viewer/AssetViewer.svelte';
+  import AssetContextMenu from '$lib/components/assets/AssetContextMenu.svelte';
   import Thumbnail from '$lib/components/assets/thumbnail/Thumbnail.svelte';
   import { AssetAction } from '$lib/constants';
   import Portal from '$lib/elements/Portal.svelte';
-  import type { AssetMultiSelectManager } from '$lib/managers/asset-multi-select-manager.svelte';
+  import {
+    assetMultiSelectManager,
+    type AssetMultiSelectManager,
+  } from '$lib/managers/asset-multi-select-manager.svelte';
   import { assetViewerManager } from '$lib/managers/asset-viewer-manager.svelte';
   import { featureFlagsManager } from '$lib/managers/feature-flags-manager.svelte';
   import type { TimelineAsset, Viewport } from '$lib/managers/timeline-manager/types';
@@ -20,6 +24,7 @@
   import { archiveAssets, getNextAsset, getPreviousAsset, navigateToAsset } from '$lib/utils/asset-utils';
   import { moveFocus } from '$lib/utils/focus-util';
   import { handleError } from '$lib/utils/handle-error';
+  import type { ContextMenuPosition } from '$lib/utils/context-menu';
   import { getJustifiedLayoutFromAssets } from '$lib/utils/layout-utils';
   import { navigate } from '$lib/utils/navigation';
   import { isTimelineAsset, toTimelineAsset } from '$lib/utils/timeline-util';
@@ -88,6 +93,9 @@
 
   let lastAssetMouseEvent: TimelineAsset | null = $state(null);
   let scrollTop = $state(0);
+  let contextMenuAsset: TimelineAsset | undefined = $state();
+  let contextMenuPosition: ContextMenuPosition = $state({ x: 0, y: 0 });
+  let isContextMenuOpen = $state(false);
 
   let slidingWindow = $derived.by(() => {
     const top = (scrollTop || 0) - slidingWindowOffset - INTERSECTION_EXPAND_TOP;
@@ -143,6 +151,19 @@
 
     assetInteraction.clearCandidates();
     assetInteraction.setAssetSelectionStart(deselect ? null : asset);
+  };
+
+  const showAssetContextMenu = (position: ContextMenuPosition, asset: TimelineAsset) => {
+    contextMenuAsset = asset;
+    contextMenuPosition = position;
+    isContextMenuOpen = true;
+  };
+
+  const viewContextMenuAsset = (asset: TimelineAsset) => {
+    const fullAsset = assets.find(({ id }) => id === asset.id);
+    if (fullAsset) {
+      void navigateToAsset(fullAsset);
+    }
   };
 
   const handleSelectAssetCandidates = (asset: TimelineAsset | null) => {
@@ -358,6 +379,9 @@
               void navigateToAsset(asset);
             }}
             onSelect={() => handleSelectAssets(currentAsset)}
+            onShowContextMenu={!disableAssetSelect && assetInteraction === assetMultiSelectManager
+              ? showAssetContextMenu
+              : undefined}
             onPreview={assetInteraction.selectionActive ? () => void navigateToAsset(asset) : undefined}
             onMouseEvent={() => assetMouseEventHandler(currentAsset)}
             {showArchiveIcon}
@@ -379,6 +403,32 @@
     {/each}
   </div>
 {/if}
+
+<Portal target="body">
+  <AssetContextMenu
+    asset={contextMenuAsset}
+    position={contextMenuPosition}
+    isOpen={isContextMenuOpen}
+    {allowDeletion}
+    onClose={() => (isContextMenuOpen = false)}
+    onView={viewContextMenuAsset}
+    onFavorite={(ids, isFavorite) => {
+      for (const asset of assets) {
+        if (ids.includes(asset.id)) {
+          asset.isFavorite = isFavorite;
+        }
+      }
+    }}
+    onArchive={(ids) => (assets = assets.filter(({ id }) => !ids.includes(id)))}
+    onDelete={(ids) => (assets = assets.filter(({ id }) => !ids.includes(id)))}
+    onRestore={(ids) => (assets = assets.filter(({ id }) => !ids.includes(id)))}
+    onUndoDelete={onReload}
+    onSetVisibility={(ids) => {
+      assets = assets.filter(({ id }) => !ids.includes(id));
+      assetInteraction.clear();
+    }}
+  />
+</Portal>
 
 <!-- Overlay Asset Viewer -->
 {#if assetViewerManager.isViewing}
