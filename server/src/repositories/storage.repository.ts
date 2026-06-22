@@ -18,6 +18,7 @@ import { PassThrough, Readable, Writable } from 'node:stream';
 import { createGunzip, createGzip } from 'node:zlib';
 import { CrawlOptionsDto, WalkOptionsDto } from 'src/dtos/library.dto';
 import { LoggingRepository } from 'src/repositories/logging.repository';
+import { ProcessRepository } from 'src/repositories/process.repository';
 import { mimeTypes } from 'src/utils/mime-types';
 
 export interface WatchEvents {
@@ -45,9 +46,43 @@ export interface DiskUsage {
   total: number;
 }
 
+const parseDfOutput = (output: string): DiskUsage => {
+  const values = output
+    .trim()
+    .split('\n')
+    .at(-1)
+    ?.match(/(\d+)\s+(\d+)\s+(\d+)\s+\d+%\s+.+$/);
+  const totalBlocks = Number(values?.[1]);
+  const usedBlocks = Number(values?.[2]);
+  const availableBlocks = Number(values?.[3]);
+
+  if (
+    !Number.isSafeInteger(totalBlocks) ||
+    !Number.isSafeInteger(usedBlocks) ||
+    !Number.isSafeInteger(availableBlocks) ||
+    totalBlocks < 0 ||
+    usedBlocks < 0 ||
+    availableBlocks < 0 ||
+    usedBlocks > totalBlocks ||
+    availableBlocks > totalBlocks - usedBlocks
+  ) {
+    throw new Error('Invalid df output');
+  }
+
+  const blockSize = 1024;
+  return {
+    available: availableBlocks * blockSize,
+    free: (totalBlocks - usedBlocks) * blockSize,
+    total: totalBlocks * blockSize,
+  };
+};
+
 @Injectable()
 export class StorageRepository {
-  constructor(private logger: LoggingRepository) {
+  constructor(
+    private logger: LoggingRepository,
+    private processRepository: ProcessRepository,
+  ) {
     this.logger.setContext(StorageRepository.name);
   }
 
@@ -210,12 +245,17 @@ export class StorageRepository {
   }
 
   async checkDiskUsage(folder: string): Promise<DiskUsage> {
-    const stats = await fs.statfs(folder);
-    return {
-      available: stats.bavail * stats.bsize,
-      free: stats.bfree * stats.bsize,
-      total: stats.blocks * stats.bsize,
-    };
+    try {
+      const { stdout } = await this.processRepository.execFile('df', ['-Pk', folder]);
+      return parseDfOutput(stdout);
+    } catch {
+      const stats = await fs.statfs(folder);
+      return {
+        available: stats.bavail * stats.bsize,
+        free: stats.bfree * stats.bsize,
+        total: stats.blocks * stats.bsize,
+      };
+    }
   }
 
   crawl(crawlOptions: CrawlOptionsDto): Promise<string[]> {

@@ -10,8 +10,16 @@
   import type { CommonPosition } from '$lib/utils/layout-utils';
   import { fromTimelinePlainDate, getDateLocaleString } from '$lib/utils/timeline-util';
   import { Icon } from '@immich/ui';
-  import { mdiCheckCircle, mdiCircleOutline } from '@mdi/js';
+  import {
+    mdiCheckCircle,
+    mdiChevronDown,
+    mdiChevronUp,
+    mdiCircleOutline,
+    mdiUnfoldLessHorizontal,
+    mdiUnfoldMoreHorizontal,
+  } from '@mdi/js';
   import type { Snippet } from 'svelte';
+  import { t } from 'svelte-i18n';
 
   type Props = {
     thumbnail: Snippet<
@@ -55,6 +63,8 @@
     });
     return getDateLocaleString(date);
   };
+
+  const timelineManager = timelineMonth.timelineManager;
 </script>
 
 {#each filterIsInOrNearViewport(timelineMonth.timelineDays) as timelineDay, groupIndex (timelineDay.day)}
@@ -62,6 +72,7 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <section
     class={[
+      'group/timeline-day',
       { 'transition-all': !timelineMonth.timelineManager.suspendTransitions },
       !timelineMonth.timelineManager.suspendTransitions && `delay-${transitionDuration}`,
     ]}
@@ -93,22 +104,57 @@
         </div>
       {/if}
 
-      <span class="w-full truncate first-letter:capitalize" title={getTimelineDayFullDate(timelineDay)}>
+      <span class="min-w-0 flex-1 truncate first-letter:capitalize" title={getTimelineDayFullDate(timelineDay)}>
         {timelineDay.groupTitle}
       </span>
+
+      <div
+        class="flex shrink-0 items-center opacity-0 transition-opacity group-focus-within/timeline-day:opacity-100 group-hover/timeline-day:opacity-100 max-md:opacity-100"
+      >
+        <button
+          type="button"
+          class="rounded-full p-1 hover:bg-gray-200 focus-visible:bg-gray-200 dark:hover:bg-gray-700 dark:focus-visible:bg-gray-700"
+          title={$t(timelineDay.isCollapsed ? 'expand' : 'collapse')}
+          aria-label={$t(timelineDay.isCollapsed ? 'expand' : 'collapse')}
+          aria-expanded={!timelineDay.isCollapsed}
+          onclick={() => timelineManager.toggleTimelineDayCollapsed(timelineDay)}
+        >
+          <Icon icon={timelineDay.isCollapsed ? mdiChevronDown : mdiChevronUp} size="18" />
+        </button>
+        <button
+          type="button"
+          class="rounded-full p-1 hover:bg-gray-200 focus-visible:bg-gray-200 dark:hover:bg-gray-700 dark:focus-visible:bg-gray-700"
+          title={$t('expand_all')}
+          aria-label={$t('expand_all')}
+          onclick={() => timelineManager.setAllTimelineDaysCollapsed(false)}
+        >
+          <Icon icon={mdiUnfoldMoreHorizontal} size="18" />
+        </button>
+        <button
+          type="button"
+          class="rounded-full p-1 hover:bg-gray-200 focus-visible:bg-gray-200 dark:hover:bg-gray-700 dark:focus-visible:bg-gray-700"
+          title={$t('collapse_all')}
+          aria-label={$t('collapse_all')}
+          onclick={() => timelineManager.setAllTimelineDaysCollapsed(true)}
+        >
+          <Icon icon={mdiUnfoldLessHorizontal} size="18" />
+        </button>
+      </div>
     </div>
 
-    <AssetLayout
-      {manager}
-      viewerAssets={timelineDay.activeViewerAssets}
-      height={timelineDay.height}
-      width={timelineDay.width}
-      {customThumbnailLayout}
-    >
-      {#snippet thumbnail({ asset, position })}
-        {@render thumbnailWithGroup({ asset, position, timelineDay, groupIndex })}
-      {/snippet}
-    </AssetLayout>
+    {#if !timelineDay.isCollapsed}
+      <AssetLayout
+        {manager}
+        viewerAssets={timelineDay.activeViewerAssets}
+        height={timelineDay.height}
+        width={timelineDay.width}
+        {customThumbnailLayout}
+      >
+        {#snippet thumbnail({ asset, position })}
+          {@render thumbnailWithGroup({ asset, position, timelineDay, groupIndex })}
+        {/snippet}
+      </AssetLayout>
+    {/if}
   </section>
 {/each}
 

@@ -715,6 +715,62 @@ describe('TimelineManager', () => {
     });
   });
 
+  describe('timeline day collapsing', () => {
+    let timelineManager: TimelineManager;
+
+    const buildAssetForDay = (day: number) =>
+      deriveLocalDateTimeFromFileCreatedAt(
+        timelineAssetFactory.build({
+          fileCreatedAt: fromISODateTimeUTCToObject(`2024-01-${day.toString().padStart(2, '0')}T12:00:00.000Z`),
+        }),
+      );
+
+    beforeEach(async () => {
+      timelineManager = new TimelineManager();
+      sdkMock.getTimeBuckets.mockResolvedValue([]);
+      await timelineManager.updateViewport({ width: 1588, height: 1000 });
+      timelineManager.upsertAssets([buildAssetForDay(20), buildAssetForDay(19)]);
+    });
+
+    it('collapses and expands an individual day', () => {
+      const month = timelineManager.months[0];
+      const timelineDay = month.timelineDays[0];
+      const expandedMonthHeight = month.height;
+
+      timelineManager.setTimelineDayCollapsed(timelineDay, true);
+
+      expect(timelineDay.isCollapsed).toBe(true);
+      expect(timelineDay.height).toBe(0);
+      expect(timelineDay.width).toBe(timelineManager.viewportWidth);
+      expect(month.height).toBeLessThan(expandedMonthHeight);
+
+      timelineManager.toggleTimelineDayCollapsed(timelineDay);
+
+      expect(timelineDay.isCollapsed).toBe(false);
+      expect(timelineDay.height).toBeGreaterThan(0);
+      expect(month.height).toBe(expandedMonthHeight);
+    });
+
+    it('collapses and expands all existing and newly loaded days', () => {
+      const month = timelineManager.months[0];
+
+      timelineManager.setAllTimelineDaysCollapsed(true);
+
+      expect(month.timelineDays.every(({ isCollapsed }) => isCollapsed)).toBe(true);
+      expect(month.height).toBe(timelineManager.headerHeight * month.timelineDays.length);
+
+      timelineManager.upsertAssets([buildAssetForDay(18)]);
+
+      expect(month.timelineDays.find(({ day }) => day === 18)?.isCollapsed).toBe(true);
+      expect(month.height).toBe(timelineManager.headerHeight * month.timelineDays.length);
+
+      timelineManager.setAllTimelineDaysCollapsed(false);
+
+      expect(month.timelineDays.every(({ isCollapsed }) => !isCollapsed)).toBe(true);
+      expect(month.timelineDays.every(({ height }) => height > 0)).toBe(true);
+    });
+  });
+
   describe('getRandomAsset', () => {
     let timelineManager: TimelineManager;
     const bucketAssets: Record<string, TimelineAsset[]> = {

@@ -1,8 +1,10 @@
 import mockfs from 'mock-fs';
+import fs from 'node:fs/promises';
 import { CrawlOptionsDto } from 'src/dtos/library.dto';
 import { LoggingRepository } from 'src/repositories/logging.repository';
+import { ProcessRepository } from 'src/repositories/process.repository';
 import { StorageRepository } from 'src/repositories/storage.repository';
-import { automock } from 'test/utils';
+import { AutoMocked, automock } from 'test/utils';
 
 interface Test {
   test: string;
@@ -181,14 +183,100 @@ const tests: Test[] = [
 
 describe(StorageRepository.name, () => {
   let sut: StorageRepository;
+  let processMock: AutoMocked<ProcessRepository>;
 
   beforeEach(() => {
-    // eslint-disable-next-line no-sparse-arrays
-    sut = new StorageRepository(automock(LoggingRepository, { args: [, { getEnv: () => ({}) }], strict: false }));
+    processMock = automock(ProcessRepository, { strict: false });
+    sut = new StorageRepository(
+      automock(LoggingRepository, { args: [undefined, { getEnv: () => ({}) }], strict: false }),
+      processMock,
+    );
   });
 
   afterEach(() => {
     mockfs.restore();
+    vi.restoreAllMocks();
+  });
+
+  describe('checkDiskUsage', () => {
+    it('should use POSIX df output', async () => {
+      processMock.execFile.mockResolvedValue({
+        stdout: [
+          'Filesystem 1024-blocks Used Available Capacity Mounted on',
+          '/dev/disk 1000 400 500 40% /data/library',
+        ].join('\n'),
+        stderr: '',
+      });
+
+      await expect(sut.checkDiskUsage('/data/library')).resolves.toEqual({
+        available: 512_000,
+        free: 614_400,
+        total: 1_024_000,
+      });
+      expect(processMock.execFile).toHaveBeenCalledWith('df', ['-Pk', '/data/library']);
+    });
+
+    it('should pass paths as separate arguments', async () => {
+      processMock.execFile.mockResolvedValue({
+        stdout: '/dev/disk 1000 400 500 40% /data/my library',
+        stderr: '',
+      });
+
+      await sut.checkDiskUsage('/data/my library');
+
+      expect(processMock.execFile).toHaveBeenCalledWith('df', ['-Pk', '/data/my library']);
+    });
+
+    it('should fall back to statfs when df fails', async () => {
+      processMock.execFile.mockRejectedValue(new Error('df unavailable'));
+      vi.spyOn(fs, 'statfs').mockResolvedValue({
+        bavail: 500,
+        bfree: 600,
+        blocks: 1000,
+        bsize: 4096,
+      } as Awaited<ReturnType<typeof fs.statfs>>);
+
+      await expect(sut.checkDiskUsage('/data/library')).resolves.toEqual({
+        available: 2_048_000,
+        free: 2_457_600,
+        total: 4_096_000,
+      });
+    });
+
+    it('should fall back to statfs when df output is invalid', async () => {
+      processMock.execFile.mockResolvedValue({ stdout: 'invalid', stderr: '' });
+      vi.spyOn(fs, 'statfs').mockResolvedValue({
+        bavail: 500,
+        bfree: 600,
+        blocks: 1000,
+        bsize: 4096,
+      } as Awaited<ReturnType<typeof fs.statfs>>);
+
+      await expect(sut.checkDiskUsage('/data/library')).resolves.toEqual({
+        available: 2_048_000,
+        free: 2_457_600,
+        total: 4_096_000,
+      });
+    });
+
+    it('should fall back to statfs when df reports more available than free space', async () => {
+      processMock.execFile.mockResolvedValue({
+        stdout: '/dev/disk 1000 900 500 90% /data/library',
+        stderr: '',
+      });
+      vi.spyOn(fs, 'statfs').mockResolvedValue({
+        bavail: 500,
+        bfree: 600,
+        blocks: 1000,
+        bsize: 4096,
+      } as Awaited<ReturnType<typeof fs.statfs>>);
+
+      await expect(sut.checkDiskUsage('/data/library')).resolves.toEqual({
+        available: 2_048_000,
+        free: 2_457_600,
+        total: 4_096_000,
+      });
+    });
   });
 
   describe('crawl', () => {
