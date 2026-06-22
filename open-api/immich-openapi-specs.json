@@ -18768,6 +18768,16 @@
       },
       "DuplicateDetectionConfig": {
         "properties": {
+          "autoStack": {
+            "description": "Whether to automatically stack visually identical mixed-format images",
+            "type": "boolean"
+          },
+          "autoStackThreshold": {
+            "description": "Maximum perceptual hash Hamming distance for automatic stacking",
+            "maximum": 64,
+            "minimum": 0,
+            "type": "integer"
+          },
           "enabled": {
             "description": "Whether the task is enabled",
             "type": "boolean"
@@ -18781,6 +18791,8 @@
           }
         },
         "required": [
+          "autoStack",
+          "autoStackThreshold",
           "enabled",
           "maxDistance"
         ],
@@ -19239,6 +19251,8 @@
           "AssetDetectFaces",
           "AssetDetectDuplicatesQueueAll",
           "AssetDetectDuplicates",
+          "AssetAutoStackDuplicatesQueueAll",
+          "AssetAutoStackDuplicates",
           "AssetEditThumbnailGeneration",
           "AssetEncodeVideoQueueAll",
           "AssetEncodeVideo",

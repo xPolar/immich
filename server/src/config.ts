@@ -86,6 +86,8 @@ export type SystemConfig = {
     duplicateDetection: {
       enabled: boolean;
       maxDistance: number;
+      autoStack: boolean;
+      autoStackThreshold: number;
     };
     facialRecognition: {
       enabled: boolean;
@@ -301,6 +303,8 @@ export const defaults = Object.freeze<SystemConfig>({
     duplicateDetection: {
       enabled: true,
       maxDistance: 0.01,
+      autoStack: false,
+      autoStackThreshold: 6,
     },
     facialRecognition: {
       enabled: true,

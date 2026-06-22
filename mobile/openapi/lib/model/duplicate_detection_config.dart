@@ -13,9 +13,20 @@ part of openapi.api;
 class DuplicateDetectionConfig {
   /// Returns a new [DuplicateDetectionConfig] instance.
   DuplicateDetectionConfig({
+    required this.autoStack,
+    required this.autoStackThreshold,
     required this.enabled,
     required this.maxDistance,
   });
+
+  /// Whether to automatically stack visually identical mixed-format images
+  bool autoStack;
+
+  /// Maximum perceptual hash Hamming distance for automatic stacking
+  ///
+  /// Minimum value: 0
+  /// Maximum value: 64
+  int autoStackThreshold;
 
   /// Whether the task is enabled
   bool enabled;
@@ -28,20 +39,26 @@ class DuplicateDetectionConfig {
 
   @override
   bool operator ==(Object other) => identical(this, other) || other is DuplicateDetectionConfig &&
+    other.autoStack == autoStack &&
+    other.autoStackThreshold == autoStackThreshold &&
     other.enabled == enabled &&
     other.maxDistance == maxDistance;
 
   @override
   int get hashCode =>
     // ignore: unnecessary_parenthesis
+    (autoStack.hashCode) +
+    (autoStackThreshold.hashCode) +
     (enabled.hashCode) +
     (maxDistance.hashCode);
 
   @override
-  String toString() => 'DuplicateDetectionConfig[enabled=$enabled, maxDistance=$maxDistance]';
+  String toString() => 'DuplicateDetectionConfig[autoStack=$autoStack, autoStackThreshold=$autoStackThreshold, enabled=$enabled, maxDistance=$maxDistance]';
 
   Map<String, dynamic> toJson() {
     final json = <String, dynamic>{};
+      json[r'autoStack'] = this.autoStack;
+      json[r'autoStackThreshold'] = this.autoStackThreshold;
       json[r'enabled'] = this.enabled;
       json[r'maxDistance'] = this.maxDistance;
     return json;
@@ -56,6 +73,8 @@ class DuplicateDetectionConfig {
       final json = value.cast<String, dynamic>();
 
       return DuplicateDetectionConfig(
+        autoStack: mapValueOfType<bool>(json, r'autoStack')!,
+        autoStackThreshold: mapValueOfType<int>(json, r'autoStackThreshold')!,
         enabled: mapValueOfType<bool>(json, r'enabled')!,
         maxDistance: mapValueOfType<double>(json, r'maxDistance')!,
       );
@@ -105,6 +124,8 @@ class DuplicateDetectionConfig {
 
   /// The list of required keys that must be present in a JSON.
   static const requiredKeys = <String>{
+    'autoStack',
+    'autoStackThreshold',
     'enabled',
     'maxDistance',
   };

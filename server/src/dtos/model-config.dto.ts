@@ -20,6 +20,12 @@ export const DuplicateDetectionConfigSchema = TaskConfigSchema.extend({
     .min(0.001)
     .max(0.1)
     .describe('Maximum distance threshold for duplicate detection'),
+  autoStack: z.boolean().describe('Whether to automatically stack visually identical mixed-format images'),
+  autoStackThreshold: z
+    .int()
+    .min(0)
+    .max(64)
+    .describe('Maximum perceptual hash Hamming distance for automatic stacking'),
 }).meta({ id: 'DuplicateDetectionConfig' });
 
 export const FacialRecognitionConfigSchema = ModelConfigSchema.extend({

@@ -29,6 +29,8 @@ class JobName {
   static const assetDetectFaces = JobName._(r'AssetDetectFaces');
   static const assetDetectDuplicatesQueueAll = JobName._(r'AssetDetectDuplicatesQueueAll');
   static const assetDetectDuplicates = JobName._(r'AssetDetectDuplicates');
+  static const assetAutoStackDuplicatesQueueAll = JobName._(r'AssetAutoStackDuplicatesQueueAll');
+  static const assetAutoStackDuplicates = JobName._(r'AssetAutoStackDuplicates');
   static const assetEditThumbnailGeneration = JobName._(r'AssetEditThumbnailGeneration');
   static const assetEncodeVideoQueueAll = JobName._(r'AssetEncodeVideoQueueAll');
   static const assetEncodeVideo = JobName._(r'AssetEncodeVideo');
@@ -98,6 +100,8 @@ class JobName {
     assetDetectFaces,
     assetDetectDuplicatesQueueAll,
     assetDetectDuplicates,
+    assetAutoStackDuplicatesQueueAll,
+    assetAutoStackDuplicates,
     assetEditThumbnailGeneration,
     assetEncodeVideoQueueAll,
     assetEncodeVideo,
@@ -202,6 +206,8 @@ class JobNameTypeTransformer {
         case r'AssetDetectFaces': return JobName.assetDetectFaces;
         case r'AssetDetectDuplicatesQueueAll': return JobName.assetDetectDuplicatesQueueAll;
         case r'AssetDetectDuplicates': return JobName.assetDetectDuplicates;
+        case r'AssetAutoStackDuplicatesQueueAll': return JobName.assetAutoStackDuplicatesQueueAll;
+        case r'AssetAutoStackDuplicates': return JobName.assetAutoStackDuplicates;
         case r'AssetEditThumbnailGeneration': return JobName.assetEditThumbnailGeneration;
         case r'AssetEncodeVideoQueueAll': return JobName.assetEncodeVideoQueueAll;
         case r'AssetEncodeVideo': return JobName.assetEncodeVideo;
