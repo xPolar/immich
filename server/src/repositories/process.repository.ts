@@ -1,10 +1,14 @@
 import { Injectable } from '@nestjs/common';
-import { fork, spawn, SpawnOptionsWithoutStdio } from 'node:child_process';
+import { execFile as execFileCallback, fork, spawn, SpawnOptionsWithoutStdio } from 'node:child_process';
 import { Duplex } from 'node:stream';
+import { promisify } from 'node:util';
+
+const execFile = promisify(execFileCallback);
 
 @Injectable()
 export class ProcessRepository {
   spawn = spawn;
+  execFile = execFile;
 
   spawnDuplexStream(command: string, args?: readonly string[], options?: SpawnOptionsWithoutStdio): Duplex {
     let stdinClosed = false;
