@@ -1,6 +1,9 @@
 <script lang="ts">
   import MenuOption from '$lib/components/shared-components/context-menu/MenuOption.svelte';
-  import { assetMultiSelectManager } from '$lib/managers/asset-multi-select-manager.svelte';
+  import {
+    assetMultiSelectManager,
+    type AssetMultiSelectManager,
+  } from '$lib/managers/asset-multi-select-manager.svelte';
   import type { OnFavorite } from '$lib/utils/actions';
   import { handleError } from '$lib/utils/handle-error';
   import { updateAssets } from '@immich/sdk';
@@ -12,9 +15,10 @@
     onFavorite?: OnFavorite;
     menuItem?: boolean;
     removeFavorite: boolean;
+    assetInteraction?: AssetMultiSelectManager;
   }
 
-  let { onFavorite, menuItem = false, removeFavorite }: Props = $props();
+  let { onFavorite, menuItem = false, removeFavorite, assetInteraction = assetMultiSelectManager }: Props = $props();
 
   let text = $derived(removeFavorite ? $t('remove_from_favorites') : $t('to_favorite'));
   let icon = $derived(removeFavorite ? mdiHeartMinusOutline : mdiHeartOutline);
@@ -26,7 +30,7 @@
     loading = true;
 
     try {
-      const assets = assetMultiSelectManager.ownedAssets.filter((asset) => asset.isFavorite !== isFavorite);
+      const assets = assetInteraction.ownedAssets.filter((asset) => asset.isFavorite !== isFavorite);
 
       const ids = assets.map(({ id }) => id);
 
@@ -46,7 +50,7 @@
           : $t('removed_from_favorites_count', { values: { count: ids.length } }),
       );
 
-      assetMultiSelectManager.clear();
+      assetInteraction.clear();
     } catch (error) {
       handleError(error, $t('errors.unable_to_add_remove_favorites', { values: { favorite: isFavorite } }));
     } finally {

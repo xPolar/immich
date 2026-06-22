@@ -154,18 +154,12 @@
   };
 
   const showAssetContextMenu = (position: ContextMenuPosition, asset: TimelineAsset) => {
-    if (!assetInteraction.hasSelectedAsset(asset.id)) {
-      assetInteraction.clear();
-      assetInteraction.selectAsset(asset);
-    }
-
     contextMenuAsset = asset;
     contextMenuPosition = position;
     isContextMenuOpen = true;
   };
 
   const viewContextMenuAsset = (asset: TimelineAsset) => {
-    assetInteraction.clear();
     const fullAsset = assets.find(({ id }) => id === asset.id);
     if (fullAsset) {
       void navigateToAsset(fullAsset);

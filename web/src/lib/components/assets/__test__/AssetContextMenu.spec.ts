@@ -13,10 +13,11 @@ describe('AssetContextMenu', () => {
     assetMultiSelectManager.clear();
   });
 
-  it('opens the selected asset from the menu', async () => {
+  it('opens the target asset without changing the global selection', async () => {
+    const selectedAsset = toTimelineAsset(assetFactory.build());
     const asset = toTimelineAsset(assetFactory.build());
     const onView = vi.fn();
-    assetMultiSelectManager.selectAsset(asset);
+    assetMultiSelectManager.selectAsset(selectedAsset);
 
     const sut = render(AssetContextMenu, {
       asset,
@@ -27,8 +28,12 @@ describe('AssetContextMenu', () => {
     });
 
     expect(sut.getByRole('menu', { name: 'assets' })).toBeInTheDocument();
+    expect(assetMultiSelectManager.assets).toEqual([selectedAsset]);
+    expect(assetMultiSelectManager.hasSelectedAsset(asset.id)).toBe(false);
     await fireEvent.click(sut.getByRole('menuitem', { name: 'open' }));
 
     expect(onView).toHaveBeenCalledWith(expect.objectContaining({ id: asset.id }));
+    expect(assetMultiSelectManager.assets).toEqual([selectedAsset]);
+    expect(assetMultiSelectManager.hasSelectedAsset(asset.id)).toBe(false);
   });
 });

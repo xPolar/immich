@@ -192,6 +192,8 @@
             min={0}
             max={64}
             step="1"
+            required={true}
+            integer={true}
             description={$t('admin.machine_learning_duplicate_detection_auto_stack_threshold_description')}
             disabled={disabled ||
               !configToEdit.machineLearning.enabled ||

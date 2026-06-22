@@ -1,5 +1,8 @@
 <script lang="ts">
-  import { assetMultiSelectManager } from '$lib/managers/asset-multi-select-manager.svelte';
+  import {
+    assetMultiSelectManager,
+    type AssetMultiSelectManager,
+  } from '$lib/managers/asset-multi-select-manager.svelte';
   import { authManager } from '$lib/managers/auth-manager.svelte';
   import AssetUpdateDescriptionConfirmModal from '$lib/modals/AssetUpdateDescriptionConfirmModal.svelte';
   import { getOwnedAssetsWithWarning } from '$lib/utils/asset-utils';
@@ -12,18 +15,19 @@
 
   interface Props {
     menuItem?: boolean;
+    assetInteraction?: AssetMultiSelectManager;
   }
 
-  let { menuItem = false }: Props = $props();
+  let { menuItem = false, assetInteraction = assetMultiSelectManager }: Props = $props();
 
   const handleUpdateDescription = async () => {
     const description = await modalManager.show(AssetUpdateDescriptionConfirmModal);
     if (description) {
-      const ids = getOwnedAssetsWithWarning(assetMultiSelectManager.assets, authManager.user);
+      const ids = getOwnedAssetsWithWarning(assetInteraction.assets, authManager.user);
 
       try {
         await updateAssets({ assetBulkUpdateDto: { ids, description } });
-        assetMultiSelectManager.clear();
+        assetInteraction.clear();
       } catch (error) {
         handleError(error, $t('errors.unable_to_change_description'));
       }

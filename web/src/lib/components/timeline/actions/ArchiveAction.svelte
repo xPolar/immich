@@ -1,6 +1,9 @@
 <script lang="ts">
   import MenuOption from '$lib/components/shared-components/context-menu/MenuOption.svelte';
-  import { assetMultiSelectManager } from '$lib/managers/asset-multi-select-manager.svelte';
+  import {
+    assetMultiSelectManager,
+    type AssetMultiSelectManager,
+  } from '$lib/managers/asset-multi-select-manager.svelte';
   import type { OnArchive } from '$lib/utils/actions';
   import { archiveAssets } from '$lib/utils/asset-utils';
   import { AssetVisibility } from '@immich/sdk';
@@ -12,9 +15,10 @@
     onArchive?: OnArchive;
     menuItem?: boolean;
     unarchive?: boolean;
+    assetInteraction?: AssetMultiSelectManager;
   };
 
-  let { onArchive, menuItem = false, unarchive = false }: Props = $props();
+  let { onArchive, menuItem = false, unarchive = false, assetInteraction = assetMultiSelectManager }: Props = $props();
 
   let text = $derived(unarchive ? $t('unarchive') : $t('to_archive'));
   let icon = $derived(unarchive ? mdiArchiveArrowUpOutline : mdiArchiveArrowDownOutline);
@@ -23,12 +27,12 @@
 
   const handleArchive = async () => {
     const visibility = unarchive ? AssetVisibility.Timeline : AssetVisibility.Archive;
-    const assets = assetMultiSelectManager.getOwnedAssets().filter((asset) => asset.visibility !== visibility);
+    const assets = assetInteraction.getOwnedAssets().filter((asset) => asset.visibility !== visibility);
     loading = true;
     const ids = await archiveAssets(assets, visibility as AssetVisibility);
     if (ids) {
       onArchive?.(ids, visibility);
-      assetMultiSelectManager.clear();
+      assetInteraction.clear();
     }
     loading = false;
   };

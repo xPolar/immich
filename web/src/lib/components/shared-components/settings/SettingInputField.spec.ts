@@ -48,4 +48,29 @@ describe('SettingInputField component', () => {
     await user.click(document.body);
     expect(numberInput.value).toEqual('');
   });
+
+  it('normalizes required integer inputs on blur', async () => {
+    const { getByRole } = render(SettingInputField, {
+      props: {
+        label: 'test-integer-input',
+        inputType: SettingInputFieldType.NUMBER,
+        value: 6,
+        min: 0,
+        max: 64,
+        required: true,
+        integer: true,
+      },
+    });
+    const user = userEvent.setup();
+    const numberInput = getByRole('spinbutton') as HTMLInputElement;
+
+    await user.clear(numberInput);
+    await user.type(numberInput, '6.7');
+    await user.click(document.body);
+    expect(numberInput.value).toEqual('7');
+
+    await user.clear(numberInput);
+    await user.click(document.body);
+    expect(numberInput.value).toEqual('0');
+  });
 });

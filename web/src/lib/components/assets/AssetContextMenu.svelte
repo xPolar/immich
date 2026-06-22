@@ -14,7 +14,7 @@
   import SetVisibilityAction from '$lib/components/timeline/actions/SetVisibilityAction.svelte';
   import StackAction from '$lib/components/timeline/actions/StackAction.svelte';
   import TagAction from '$lib/components/timeline/actions/TagAction.svelte';
-  import { assetMultiSelectManager } from '$lib/managers/asset-multi-select-manager.svelte';
+  import { AssetMultiSelectManager } from '$lib/managers/asset-multi-select-manager.svelte';
   import { authManager } from '$lib/managers/auth-manager.svelte';
   import { eventManager } from '$lib/managers/event-manager.svelte';
   import { featureFlagsManager } from '$lib/managers/feature-flags-manager.svelte';
@@ -87,12 +87,13 @@
   }: Props = $props();
 
   const sharedLink = getSharedLink();
-  const selectedAssets = $derived(assetMultiSelectManager.assets);
+  const assetInteraction = new AssetMultiSelectManager();
+  const selectedAssets = $derived(assetInteraction.assets);
   const allTrashed = $derived(selectedAssets.length > 0 && selectedAssets.every(({ isTrashed }) => isTrashed));
   const allLocked = $derived(
     selectedAssets.length > 0 && selectedAssets.every(({ visibility }) => visibility === AssetVisibility.Locked),
   );
-  const canManage = $derived(assetMultiSelectManager.isAllUserOwned);
+  const canManage = $derived(assetInteraction.isAllUserOwned);
   const canOrganize = $derived(canManage && !allTrashed && !allLocked);
   const canDownload = $derived(!sharedLink || sharedLink.allowDownload);
   const canRemoveFromAlbum = $derived(
@@ -101,7 +102,14 @@
       (canManage || album.albumUsers[0]?.user.id === authManager.user.id) &&
       !!onRemoveFromAlbum,
   );
-  const Actions = $derived(getAssetBulkActions($t));
+  const Actions = $derived(getAssetBulkActions($t, assetInteraction));
+
+  $effect(() => {
+    assetInteraction.clear();
+    if (isOpen && asset) {
+      assetInteraction.selectAsset(asset);
+    }
+  });
 
   const handleShare = () => modalManager.show(SharedLinkCreateModal, { assetIds: selectedAssets.map(({ id }) => id) });
 
@@ -111,7 +119,7 @@
       await restoreAssets({ bulkIdsDto: { ids } });
       onRestore?.(ids);
       toastManager.primary($t('assets_restored_count', { values: { count: ids.length } }));
-      assetMultiSelectManager.clear();
+      assetInteraction.clear();
     } catch (error) {
       handleError(error, $t('errors.unable_to_restore_assets'));
     }
@@ -123,7 +131,7 @@
     }
 
     const selectedAsset = asset;
-    assetMultiSelectManager.clear();
+    assetInteraction.clear();
 
     try {
       const response = await updateAlbumInfo({
@@ -143,7 +151,7 @@
     }
 
     const selectedAsset = asset;
-    assetMultiSelectManager.clear();
+    assetInteraction.clear();
 
     try {
       const fullAsset = await getAssetInfo({ ...authManager.params, id: selectedAsset.id });
@@ -158,7 +166,7 @@
       return;
     }
 
-    assetMultiSelectManager.clear();
+    assetInteraction.clear();
     await goto(Route.search({ queryAssetId: asset.stack?.primaryAssetId ?? asset.id }));
   };
 </script>
@@ -168,16 +176,16 @@
     <MenuOption icon={mdiEyeOutline} text={$t('open')} onClick={() => onView(asset)} />
 
     {#if canDownload}
-      <DownloadAction menuItem />
+      <DownloadAction menuItem {assetInteraction} />
     {/if}
 
     {#if !sharedLink && canOrganize}
       <MenuOption icon={mdiShareVariantOutline} text={$t('share')} onClick={handleShare} />
-      <FavoriteAction menuItem removeFavorite={assetMultiSelectManager.isAllFavorite} {onFavorite} />
+      <FavoriteAction menuItem removeFavorite={assetInteraction.isAllFavorite} {onFavorite} {assetInteraction} />
       <ActionMenuItem action={Actions.AddToAlbum} />
     {/if}
 
-    {#if !sharedLink && !allTrashed && !allLocked && !assetMultiSelectManager.isAllArchived && selectedAssets.length === 1 && featureFlagsManager.value.smartSearch}
+    {#if !sharedLink && !allTrashed && !allLocked && !assetInteraction.isAllArchived && selectedAssets.length === 1 && featureFlagsManager.value.smartSearch}
       <MenuOption icon={mdiCompare} text={$t('view_similar_photos')} onClick={handleViewSimilar} />
     {/if}
 
@@ -186,24 +194,29 @@
     {/if}
 
     {#if !sharedLink && canRemoveFromAlbum && album}
-      <RemoveFromAlbumAction {album} onRemove={onRemoveFromAlbum} menuItem />
+      <RemoveFromAlbumAction {album} onRemove={onRemoveFromAlbum} menuItem {assetInteraction} />
     {/if}
 
     {#if !sharedLink && canManage}
       <hr />
 
       {#if canOrganize && onStack && onUnstack && (selectedAssets.length > 1 || selectedAssets[0]?.stack)}
-        <StackAction unstack={selectedAssets.length === 1 && !!selectedAssets[0].stack} {onStack} {onUnstack} />
+        <StackAction
+          unstack={selectedAssets.length === 1 && !!selectedAssets[0].stack}
+          {onStack}
+          {onUnstack}
+          {assetInteraction}
+        />
       {/if}
 
       {#if !allTrashed}
-        <ChangeDateAction menuItem />
-        <ChangeDescriptionAction menuItem />
-        <ChangeLocationAction menuItem />
+        <ChangeDateAction menuItem {assetInteraction} />
+        <ChangeDescriptionAction menuItem {assetInteraction} />
+        <ChangeLocationAction menuItem {assetInteraction} />
       {/if}
 
       {#if canOrganize && authManager.preferences.tags.enabled}
-        <TagAction menuItem />
+        <TagAction menuItem {assetInteraction} />
       {/if}
 
       {#if canOrganize && selectedAssets.length === 1 && asset.isImage}
@@ -218,16 +231,22 @@
         <MenuOption icon={mdiHistory} text={$t('restore')} onClick={handleRestore} />
       {:else}
         {#if !allLocked && onArchive}
-          <ArchiveAction menuItem unarchive={assetMultiSelectManager.isAllArchived} {onArchive} />
+          <ArchiveAction menuItem unarchive={assetInteraction.isAllArchived} {onArchive} {assetInteraction} />
         {/if}
         {#if onSetVisibility}
-          <SetVisibilityAction menuItem unlock={allLocked} onVisibilitySet={onSetVisibility} />
+          <SetVisibilityAction menuItem unlock={allLocked} onVisibilitySet={onSetVisibility} {assetInteraction} />
         {/if}
       {/if}
 
       {#if allowDeletion && onDelete}
         <hr />
-        <DeleteAssetsAction menuItem force={allTrashed || allLocked} onAssetDelete={onDelete} {onUndoDelete} />
+        <DeleteAssetsAction
+          menuItem
+          force={allTrashed || allLocked}
+          onAssetDelete={onDelete}
+          {onUndoDelete}
+          {assetInteraction}
+        />
       {/if}
     {/if}
   {/if}

@@ -1,6 +1,9 @@
 <script lang="ts">
   import MenuOption from '$lib/components/shared-components/context-menu/MenuOption.svelte';
-  import { assetMultiSelectManager } from '$lib/managers/asset-multi-select-manager.svelte';
+  import {
+    assetMultiSelectManager,
+    type AssetMultiSelectManager,
+  } from '$lib/managers/asset-multi-select-manager.svelte';
   import type { OnStack, OnUnstack } from '$lib/utils/actions';
   import { deleteStack, stackAssets } from '$lib/utils/asset-utils';
   import { toTimelineAsset } from '$lib/utils/timeline-util';
@@ -11,18 +14,19 @@
     unstack?: boolean;
     onStack: OnStack | undefined;
     onUnstack: OnUnstack | undefined;
+    assetInteraction?: AssetMultiSelectManager;
   }
 
-  let { unstack = false, onStack, onUnstack }: Props = $props();
+  let { unstack = false, onStack, onUnstack, assetInteraction = assetMultiSelectManager }: Props = $props();
 
   const handleStack = async () => {
-    const result = await stackAssets(assetMultiSelectManager.ownedAssets);
+    const result = await stackAssets(assetInteraction.ownedAssets);
     onStack?.(result);
-    assetMultiSelectManager.clear();
+    assetInteraction.clear();
   };
 
   const handleUnstack = async () => {
-    const selectedAssets = assetMultiSelectManager.ownedAssets;
+    const selectedAssets = assetInteraction.ownedAssets;
     if (selectedAssets.length !== 1) {
       return;
     }
@@ -34,7 +38,7 @@
     if (unstackedAssets) {
       onUnstack?.(unstackedAssets.map((a) => toTimelineAsset(a)));
     }
-    assetMultiSelectManager.clear();
+    assetInteraction.clear();
   };
 </script>
 

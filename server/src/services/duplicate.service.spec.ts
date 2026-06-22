@@ -665,6 +665,19 @@ describe(DuplicateService.name, () => {
       });
     });
 
+    it('should enqueue a backfill when the threshold changes while enabled', async () => {
+      const oldConfig = autoStackConfig();
+      const newConfig = structuredClone(oldConfig);
+      newConfig.machineLearning.duplicateDetection.autoStackThreshold++;
+
+      await sut.onConfigUpdate({ oldConfig, newConfig });
+
+      expect(mocks.job.queue).toHaveBeenCalledWith({
+        name: JobName.AssetAutoStackDuplicatesQueueAll,
+        data: {},
+      });
+    });
+
     it('should fan out all eligible assets including assets without a duplicate ID', async () => {
       mocks.systemMetadata.get.mockResolvedValue(autoStackConfig());
       mocks.duplicateRepository.streamForAutoStack.mockReturnValue(

@@ -169,7 +169,10 @@ export class DuplicateService extends BaseService {
       isDuplicateDetectionEnabled(oldConfig.machineLearning) && oldConfig.machineLearning.duplicateDetection.autoStack;
     const isEnabled =
       isDuplicateDetectionEnabled(newConfig.machineLearning) && newConfig.machineLearning.duplicateDetection.autoStack;
-    if (!wasEnabled && isEnabled) {
+    const thresholdChanged =
+      oldConfig.machineLearning.duplicateDetection.autoStackThreshold !==
+      newConfig.machineLearning.duplicateDetection.autoStackThreshold;
+    if (isEnabled && (!wasEnabled || thresholdChanged)) {
       await this.jobRepository.queue({ name: JobName.AssetAutoStackDuplicatesQueueAll, data: {} });
     }
   }

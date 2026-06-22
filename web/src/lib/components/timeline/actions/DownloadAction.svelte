@@ -2,7 +2,10 @@
   import { shortcut } from '$lib/actions/shortcut';
 
   import MenuOption from '$lib/components/shared-components/context-menu/MenuOption.svelte';
-  import { assetMultiSelectManager } from '$lib/managers/asset-multi-select-manager.svelte';
+  import {
+    assetMultiSelectManager,
+    type AssetMultiSelectManager,
+  } from '$lib/managers/asset-multi-select-manager.svelte';
   import { authManager } from '$lib/managers/auth-manager.svelte';
   import { handleDownloadAsset } from '$lib/services/asset.service';
   import { downloadArchive } from '$lib/utils/asset-utils';
@@ -14,20 +17,21 @@
   interface Props {
     filename?: string;
     menuItem?: boolean;
+    assetInteraction?: AssetMultiSelectManager;
   }
 
-  let { filename = 'immich.zip', menuItem = false }: Props = $props();
+  let { filename = 'immich.zip', menuItem = false, assetInteraction = assetMultiSelectManager }: Props = $props();
 
   const handleDownloadFiles = async () => {
-    const assets = assetMultiSelectManager.assets;
+    const assets = assetInteraction.assets;
     if (assets.length === 1) {
-      assetMultiSelectManager.clear();
+      assetInteraction.clear();
       let asset = await getAssetInfo({ ...authManager.params, id: assets[0].id });
       await handleDownloadAsset(asset, { edited: true });
       return;
     }
 
-    assetMultiSelectManager.clear();
+    assetInteraction.clear();
     await downloadArchive(filename, { assetIds: assets.map((asset) => asset.id) });
   };
 </script>

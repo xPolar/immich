@@ -1,6 +1,9 @@
 <script lang="ts">
   import MenuOption from '$lib/components/shared-components/context-menu/MenuOption.svelte';
-  import { assetMultiSelectManager } from '$lib/managers/asset-multi-select-manager.svelte';
+  import {
+    assetMultiSelectManager,
+    type AssetMultiSelectManager,
+  } from '$lib/managers/asset-multi-select-manager.svelte';
   import { featureFlagsManager } from '$lib/managers/feature-flags-manager.svelte';
   import AssetDeleteConfirmModal from '$lib/modals/AssetDeleteConfirmModal.svelte';
   import { showDeleteModal } from '$lib/stores/preferences.store';
@@ -14,16 +17,23 @@
     onUndoDelete?: OnUndoDelete | undefined;
     menuItem?: boolean;
     force?: boolean;
+    assetInteraction?: AssetMultiSelectManager;
   };
 
-  let { onAssetDelete, onUndoDelete = undefined, menuItem = false, force: forceRequested }: Props = $props();
+  let {
+    onAssetDelete,
+    onUndoDelete = undefined,
+    menuItem = false,
+    force: forceRequested,
+    assetInteraction = assetMultiSelectManager,
+  }: Props = $props();
 
   const force = $derived(forceRequested || !featureFlagsManager.value.trash);
   let label = $derived(force ? $t('permanently_delete') : $t('delete'));
   let loading = $state(false);
 
   const onAction = async () => {
-    const assets = assetMultiSelectManager.ownedAssets;
+    const assets = assetInteraction.ownedAssets;
 
     if (force && $showDeleteModal) {
       const confirmed = await modalManager.show(AssetDeleteConfirmModal, { size: assets.length });
@@ -34,7 +44,7 @@
 
     loading = true;
     await deleteAssets(force, onAssetDelete, assets, onUndoDelete);
-    assetMultiSelectManager.clear();
+    assetInteraction.clear();
     loading = false;
   };
 </script>
