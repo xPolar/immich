@@ -93,7 +93,7 @@ const hasMatchingCaptureIdentity = (seed: AutoStackSeed, candidate: AutoStackSee
 
   const seedLens = normalizeCaptureMetadata(seed.lensModel);
   const candidateLens = normalizeCaptureMetadata(candidate.lensModel);
-  return seedLens || candidateLens ? !!seedLens && seedLens === candidateLens : true;
+  return !!seedLens && seedLens === candidateLens;
 };
 
 const isWithinCaptureWindow = (seed: AutoStackSeed, candidate: AutoStackSeed) =>
@@ -552,9 +552,7 @@ export class DuplicateService extends BaseService {
       return JobStatus.Skipped;
     }
 
-    return this.databaseRepository.withLock(DatabaseLock.AutoStack, () =>
-      this.autoStackDuplicates(id, machineLearning.duplicateDetection.autoStackThreshold),
-    );
+    return this.autoStackDuplicates(id, machineLearning.duplicateDetection.autoStackThreshold);
   }
 
   private async autoStackDuplicates(id: string, threshold: number): Promise<JobStatus> {
@@ -658,13 +656,36 @@ export class DuplicateService extends BaseService {
         continue;
       }
 
-      const stack = await this.stackRepository.create(
-        { ownerId: selected[0].ownerId },
-        selected.map(({ id }) => id),
-        { clearDuplicateId: true },
-      );
-      await this.eventRepository.emit('StackCreate', { stackId: stack.id, userId: selected[0].ownerId });
-      created++;
+      const createdStack = await this.databaseRepository.withLock(DatabaseLock.AutoStack, async () => {
+        const currentAssets = await Promise.all(
+          selected.map(({ id }) => this.duplicateRepository.getAutoStackSeed(id)),
+        );
+        if (
+          currentAssets.some(
+            (asset, index) =>
+              !asset ||
+              asset.stackId ||
+              asset.ownerId !== selected[index].ownerId ||
+              getAutoStackFormat(asset.originalFileName) !== selected[index].format,
+          )
+        ) {
+          this.logger.debug(
+            `Skipping auto-stack cluster [${selected.map(({ id }) => id).join(', ')}]: eligibility changed before creation`,
+          );
+          return false;
+        }
+
+        const stack = await this.stackRepository.create(
+          { ownerId: selected[0].ownerId },
+          selected.map(({ id }) => id),
+          { clearDuplicateId: true },
+        );
+        await this.eventRepository.emit('StackCreate', { stackId: stack.id, userId: selected[0].ownerId });
+        return true;
+      });
+      if (createdStack) {
+        created++;
+      }
     }
 
     return created > 0 ? JobStatus.Success : JobStatus.Skipped;

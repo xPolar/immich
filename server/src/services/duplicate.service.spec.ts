@@ -69,7 +69,9 @@ const autoStackConfig = () => {
 };
 
 const mockAutoStackAssets = (mocks: ServiceMocks, assets: ReturnType<typeof autoStackAsset>[]) => {
-  mocks.duplicateRepository.getAutoStackSeed.mockResolvedValue(assets[0]);
+  mocks.duplicateRepository.getAutoStackSeed.mockImplementation((id) =>
+    Promise.resolve(assets.find((asset) => asset.id === id) ?? assets[0]),
+  );
   mocks.duplicateRepository.getAutoStackCandidates.mockResolvedValue(assets.slice(1));
 };
 
@@ -707,6 +709,9 @@ describe(DuplicateService.name, () => {
         stackId: 'stack-id',
         userId: 'user-id',
       });
+      expect(mocks.media.getPerceptualHash.mock.invocationCallOrder.at(-1)).toBeLessThan(
+        mocks.database.withLock.mock.invocationCallOrder[0],
+      );
     });
 
     it('should skip same-format copies', async () => {
@@ -838,6 +843,29 @@ describe(DuplicateService.name, () => {
       expect(mocks.stack.create).not.toHaveBeenCalled();
     });
 
+    it('should not match same camera and timestamp when lens metadata is missing', async () => {
+      mocks.systemMetadata.get.mockResolvedValue(autoStackConfig());
+      mockAutoStackAssets(mocks, [
+        autoStackAsset('jpeg', 'first.jpg', {
+          duplicateId: null,
+          make: 'Canon',
+          model: 'EOS R5',
+          lensModel: null,
+        }),
+        autoStackAsset('raw', 'second.cr3', {
+          duplicateId: null,
+          make: 'Canon',
+          model: 'EOS R5',
+          lensModel: null,
+        }),
+      ]);
+
+      await expect(sut.handleAutoStackDuplicates({ id: 'jpeg' })).resolves.toBe(JobStatus.Skipped);
+
+      expect(mocks.media.getPerceptualHash).not.toHaveBeenCalled();
+      expect(mocks.stack.create).not.toHaveBeenCalled();
+    });
+
     it('should not join dissimilar endpoints through a transitive perceptual match', async () => {
       mocks.systemMetadata.get.mockResolvedValue(autoStackConfig());
       mockAutoStackAssets(mocks, [
@@ -898,15 +926,21 @@ describe(DuplicateService.name, () => {
       expect(mocks.stack.create).not.toHaveBeenCalled();
     });
 
-    it('should skip an already-stacked seed after acquiring the lock', async () => {
+    it('should skip when an asset becomes stacked before final creation', async () => {
       mocks.systemMetadata.get.mockResolvedValue(autoStackConfig());
-      mocks.duplicateRepository.getAutoStackSeed.mockResolvedValue(
-        autoStackAsset('jpeg', 'one.jpg', { stackId: 'existing-stack' }),
-      );
+      const seed = autoStackAsset('jpeg', 'one.jpg');
+      const candidate = autoStackAsset('png', 'two.png');
+      mocks.duplicateRepository.getAutoStackSeed
+        .mockResolvedValueOnce(seed)
+        .mockResolvedValueOnce({ ...seed, stackId: 'existing-stack' })
+        .mockResolvedValueOnce(candidate);
+      mocks.duplicateRepository.getAutoStackCandidates.mockResolvedValue([candidate]);
+      mocks.media.getPerceptualHash.mockResolvedValue(1n);
 
       await expect(sut.handleAutoStackDuplicates({ id: 'jpeg' })).resolves.toBe(JobStatus.Skipped);
 
-      expect(mocks.duplicateRepository.getAutoStackCandidates).not.toHaveBeenCalled();
+      expect(mocks.media.getPerceptualHash).toHaveBeenCalledTimes(2);
+      expect(mocks.database.withLock).toHaveBeenCalled();
       expect(mocks.stack.create).not.toHaveBeenCalled();
     });
   });

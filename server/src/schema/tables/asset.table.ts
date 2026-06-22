@@ -50,6 +50,7 @@ import { ASSET_CHECKSUM_CONSTRAINT } from 'src/utils/database';
 })
 @Index({ columns: ['originalPath', 'libraryId'] })
 @Index({ columns: ['id', 'stackId'] })
+@Index({ columns: ['ownerId', 'localDateTime'] })
 @Index({
   name: 'asset_originalFilename_trigram_idx',
   using: 'gin',

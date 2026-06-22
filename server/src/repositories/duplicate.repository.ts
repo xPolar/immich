@@ -230,54 +230,68 @@ export class DuplicateRepository {
       },
     ],
   })
-  getAutoStackCandidates(search: AutoStackSearch) {
-    return this.db
-      .selectFrom('asset')
-      .leftJoin('asset_exif', 'asset_exif.assetId', 'asset.id')
-      .select([
-        'asset.id',
-        'asset.ownerId',
-        'asset.originalFileName',
-        'asset.type',
-        'asset.visibility',
-        'asset.stackId',
-        'asset.duplicateId',
-        'asset.localDateTime',
-        'asset_exif.fileSizeInByte',
-        'asset_exif.dateTimeOriginal',
-        'asset_exif.make',
-        'asset_exif.model',
-        'asset_exif.lensModel',
-      ])
-      .select((eb) => withFilePath(eb, AssetFileType.Preview).as('previewPath'))
-      .where('asset.id', '!=', asUuid(search.assetId))
-      .where('asset.ownerId', '=', asUuid(search.ownerId))
-      .where('asset.type', '=', AssetType.Image)
-      .where('asset.visibility', 'in', [AssetVisibility.Archive, AssetVisibility.Timeline])
-      .where('asset.deletedAt', 'is', null)
-      .where('asset.stackId', 'is', null)
-      .where(isAutoStackFormat)
-      .where((eb) =>
-        eb.exists(
-          eb
-            .selectFrom('asset_file')
-            .whereRef('asset_file.assetId', '=', 'asset.id')
-            .where('asset_file.type', '=', AssetFileType.Preview)
-            .where('asset_file.isEdited', '=', false),
-        ),
-      )
-      .where((eb) =>
-        eb.or([
-          ...(search.duplicateId ? [eb('asset.duplicateId', '=', asUuid(search.duplicateId))] : []),
-          sql<boolean>`abs(extract(epoch from (asset."localDateTime" - ${search.localDateTime}))) <= 1`,
-          ...(search.dateTimeOriginal
-            ? [
-                sql<boolean>`asset_exif."dateTimeOriginal" is not null and abs(extract(epoch from (asset_exif."dateTimeOriginal" - ${search.dateTimeOriginal}))) <= 1`,
-              ]
-            : []),
-        ]),
-      )
-      .execute();
+  async getAutoStackCandidates(search: AutoStackSearch) {
+    const baseQuery = () =>
+      this.db
+        .selectFrom('asset')
+        .leftJoin('asset_exif', 'asset_exif.assetId', 'asset.id')
+        .select([
+          'asset.id',
+          'asset.ownerId',
+          'asset.originalFileName',
+          'asset.type',
+          'asset.visibility',
+          'asset.stackId',
+          'asset.duplicateId',
+          'asset.localDateTime',
+          'asset_exif.fileSizeInByte',
+          'asset_exif.dateTimeOriginal',
+          'asset_exif.make',
+          'asset_exif.model',
+          'asset_exif.lensModel',
+        ])
+        .select((eb) => withFilePath(eb, AssetFileType.Preview).as('previewPath'))
+        .where('asset.id', '!=', asUuid(search.assetId))
+        .where('asset.ownerId', '=', asUuid(search.ownerId))
+        .where('asset.type', '=', AssetType.Image)
+        .where('asset.visibility', 'in', [AssetVisibility.Archive, AssetVisibility.Timeline])
+        .where('asset.deletedAt', 'is', null)
+        .where('asset.stackId', 'is', null)
+        .where(isAutoStackFormat)
+        .where((eb) =>
+          eb.exists(
+            eb
+              .selectFrom('asset_file')
+              .whereRef('asset_file.assetId', '=', 'asset.id')
+              .where('asset_file.type', '=', AssetFileType.Preview)
+              .where('asset_file.isEdited', '=', false),
+          ),
+        );
+
+    const queries = [
+      baseQuery()
+        .where('asset.localDateTime', '>=', new Date(search.localDateTime.getTime() - 1000))
+        .where('asset.localDateTime', '<=', new Date(search.localDateTime.getTime() + 1000))
+        .execute(),
+    ];
+    if (search.duplicateId) {
+      queries.push(baseQuery().where('asset.duplicateId', '=', asUuid(search.duplicateId)).execute());
+    }
+    if (search.dateTimeOriginal) {
+      queries.push(
+        baseQuery()
+          .where('asset_exif.dateTimeOriginal', '>=', new Date(search.dateTimeOriginal.getTime() - 1000))
+          .where('asset_exif.dateTimeOriginal', '<=', new Date(search.dateTimeOriginal.getTime() + 1000))
+          .execute(),
+      );
+    }
+
+    const candidates = new Map<string, Awaited<(typeof queries)[number]>[number]>();
+    const results = await Promise.all(queries);
+    for (const candidate of results.flat()) {
+      candidates.set(candidate.id, candidate);
+    }
+    return [...candidates.values()];
   }
 
   @GenerateSql({ params: [DummyValue.UUID, DummyValue.UUID] })

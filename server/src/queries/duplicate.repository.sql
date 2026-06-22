@@ -302,24 +302,173 @@ where
       and "asset_file"."type" = $6
       and "asset_file"."isEdited" = $7
   )
-  and (
-    "asset"."duplicateId" = $8::uuid
-    or abs(
-      extract(
-        epoch
-        from
-          (asset."localDateTime" - $9)
-      )
-    ) <= 1
-    or asset_exif."dateTimeOriginal" is not null
-    and abs(
-      extract(
-        epoch
-        from
-          (asset_exif."dateTimeOriginal" - $10)
-      )
-    ) <= 1
+  and "asset"."localDateTime" >= $8
+  and "asset"."localDateTime" <= $9
+select
+  "asset"."id",
+  "asset"."ownerId",
+  "asset"."originalFileName",
+  "asset"."type",
+  "asset"."visibility",
+  "asset"."stackId",
+  "asset"."duplicateId",
+  "asset"."localDateTime",
+  "asset_exif"."fileSizeInByte",
+  "asset_exif"."dateTimeOriginal",
+  "asset_exif"."make",
+  "asset_exif"."model",
+  "asset_exif"."lensModel",
+  (
+    select
+      "asset_file"."path"
+    from
+      "asset_file"
+    where
+      "asset_file"."assetId" = "asset"."id"
+      and "asset_file"."type" = 'preview'
+      and "asset_file"."isEdited" = false
+  ) as "previewPath"
+from
+  "asset"
+  left join "asset_exif" on "asset_exif"."assetId" = "asset"."id"
+where
+  "asset"."id" != $1::uuid
+  and "asset"."ownerId" = $2::uuid
+  and "asset"."type" = $3
+  and "asset"."visibility" in ($4, $5)
+  and "asset"."deletedAt" is null
+  and "asset"."stackId" is null
+  and lower(asset."originalFileName") like any (
+    array[
+      '%.jpg',
+      '%.jpeg',
+      '%.jpe',
+      '%.png',
+      '%.3fr',
+      '%.ari',
+      '%.arw',
+      '%.cap',
+      '%.cin',
+      '%.cr2',
+      '%.cr3',
+      '%.crw',
+      '%.dcr',
+      '%.dng',
+      '%.erf',
+      '%.fff',
+      '%.iiq',
+      '%.k25',
+      '%.kdc',
+      '%.mrw',
+      '%.nef',
+      '%.nrw',
+      '%.orf',
+      '%.ori',
+      '%.pef',
+      '%.psd',
+      '%.raf',
+      '%.raw',
+      '%.rw2',
+      '%.rwl',
+      '%.sr2',
+      '%.srf',
+      '%.srw',
+      '%.x3f'
+    ]::text[]
   )
+  and exists (
+    select
+    from
+      "asset_file"
+    where
+      "asset_file"."assetId" = "asset"."id"
+      and "asset_file"."type" = $6
+      and "asset_file"."isEdited" = $7
+  )
+  and "asset"."duplicateId" = $8::uuid
+select
+  "asset"."id",
+  "asset"."ownerId",
+  "asset"."originalFileName",
+  "asset"."type",
+  "asset"."visibility",
+  "asset"."stackId",
+  "asset"."duplicateId",
+  "asset"."localDateTime",
+  "asset_exif"."fileSizeInByte",
+  "asset_exif"."dateTimeOriginal",
+  "asset_exif"."make",
+  "asset_exif"."model",
+  "asset_exif"."lensModel",
+  (
+    select
+      "asset_file"."path"
+    from
+      "asset_file"
+    where
+      "asset_file"."assetId" = "asset"."id"
+      and "asset_file"."type" = 'preview'
+      and "asset_file"."isEdited" = false
+  ) as "previewPath"
+from
+  "asset"
+  left join "asset_exif" on "asset_exif"."assetId" = "asset"."id"
+where
+  "asset"."id" != $1::uuid
+  and "asset"."ownerId" = $2::uuid
+  and "asset"."type" = $3
+  and "asset"."visibility" in ($4, $5)
+  and "asset"."deletedAt" is null
+  and "asset"."stackId" is null
+  and lower(asset."originalFileName") like any (
+    array[
+      '%.jpg',
+      '%.jpeg',
+      '%.jpe',
+      '%.png',
+      '%.3fr',
+      '%.ari',
+      '%.arw',
+      '%.cap',
+      '%.cin',
+      '%.cr2',
+      '%.cr3',
+      '%.crw',
+      '%.dcr',
+      '%.dng',
+      '%.erf',
+      '%.fff',
+      '%.iiq',
+      '%.k25',
+      '%.kdc',
+      '%.mrw',
+      '%.nef',
+      '%.nrw',
+      '%.orf',
+      '%.ori',
+      '%.pef',
+      '%.psd',
+      '%.raf',
+      '%.raw',
+      '%.rw2',
+      '%.rwl',
+      '%.sr2',
+      '%.srf',
+      '%.srw',
+      '%.x3f'
+    ]::text[]
+  )
+  and exists (
+    select
+    from
+      "asset_file"
+    where
+      "asset_file"."assetId" = "asset"."id"
+      and "asset_file"."type" = $6
+      and "asset_file"."isEdited" = $7
+  )
+  and "asset_exif"."dateTimeOriginal" >= $8
+  and "asset_exif"."dateTimeOriginal" <= $9
 
 -- DuplicateRepository.delete
 update "asset"
