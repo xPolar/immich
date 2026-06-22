@@ -1,21 +1,62 @@
 import type { ServerConfigDto } from '@immich/sdk';
-import { asUrl } from '$lib/services/shared-link.service';
+import type { MessageFormatter } from 'svelte-i18n';
+import {
+  asUrl,
+  getSharedLinkActions,
+  shouldShowAlbumSharedLinkAnalytics,
+  shouldTrackSharedLinkView,
+} from '$lib/services/shared-link.service';
 import { sharedLinkFactory } from '@test-data/factories/shared-link-factory';
 
-describe('SharedLinkService', () => {
-  beforeAll(() => {
-    vi.mock(import('$lib/managers/server-config-manager.svelte'), () => ({
-      serverConfigManager: {
-        value: { externalDomain: 'http://localhost:2283' } as ServerConfigDto,
-        init: vi.fn(),
-        loadServerConfig: vi.fn(),
-      },
-    }));
-  });
+vi.mock(import('$lib/managers/server-config-manager.svelte'), () => ({
+  serverConfigManager: {
+    value: { externalDomain: 'http://localhost:2283' } as ServerConfigDto,
+    init: vi.fn(),
+    loadServerConfig: vi.fn(),
+  },
+}));
 
+describe('SharedLinkService', () => {
   describe('asUrl', () => {
     it('should properly encode characters in slug', () => {
       expect(asUrl(sharedLinkFactory.build({ slug: 'foo/bar' }))).toBe('http://localhost:2283/s/foo%2Fbar');
+    });
+  });
+
+  describe('shouldTrackSharedLinkView', () => {
+    it('should not track while the password prompt is shown', () => {
+      expect(shouldTrackSharedLinkView({ authenticated: false, ownerId: 'owner', passwordRequired: true })).toBe(false);
+    });
+
+    it('should track an anonymous browser after password login', () => {
+      expect(shouldTrackSharedLinkView({ authenticated: false, ownerId: 'owner', passwordRequired: false })).toBe(true);
+    });
+
+    it('should not track the authenticated owner', () => {
+      expect(
+        shouldTrackSharedLinkView({
+          authenticated: true,
+          userId: 'owner',
+          ownerId: 'owner',
+          passwordRequired: false,
+        }),
+      ).toBe(false);
+    });
+  });
+
+  it('should expose analytics from the shared link actions', () => {
+    const formatter = ((key: string) => key) as MessageFormatter;
+    const { Analytics } = getSharedLinkActions(formatter, sharedLinkFactory.build());
+
+    expect(Analytics.title).toBe('analytics');
+    expect(Analytics.onAction).toBeTypeOf('function');
+  });
+
+  describe('shouldShowAlbumSharedLinkAnalytics', () => {
+    it('should only show analytics for an owned album with a shared link', () => {
+      expect(shouldShowAlbumSharedLinkAnalytics({ isOwned: true, hasSharedLink: true })).toBe(true);
+      expect(shouldShowAlbumSharedLinkAnalytics({ isOwned: false, hasSharedLink: true })).toBe(false);
+      expect(shouldShowAlbumSharedLinkAnalytics({ isOwned: true, hasSharedLink: false })).toBe(false);
     });
   });
 });

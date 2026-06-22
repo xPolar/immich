@@ -10,6 +10,8 @@ import {
   SharedLinkLoginDto,
   SharedLinkResponseDto,
   SharedLinkSearchDto,
+  SharedLinkViewPeriod,
+  SharedLinkViewResponseDto,
 } from 'src/dtos/shared-link.dto';
 import { Permission, SharedLinkType } from 'src/enum';
 import { BaseService } from 'src/services/base.service';
@@ -17,6 +19,67 @@ import { getExternalDomain, OpenGraphTags } from 'src/utils/misc';
 
 @Injectable()
 export class SharedLinkService extends BaseService {
+  createVisitorId() {
+    return this.cryptoRepository.randomBytes(32).toString('base64url');
+  }
+
+  async trackView(auth: AuthDto, authTokens: string[], visitorId: string): Promise<void> {
+    if (!auth.sharedLink) {
+      throw new ForbiddenException();
+    }
+
+    const { id, albumId, password } = auth.sharedLink;
+    if (password && !authTokens.includes(this.asToken({ id, password }))) {
+      throw new UnauthorizedException('Password required');
+    }
+
+    const visitorHash = this.cryptoRepository.hashSha256(`${albumId || id}:${visitorId}`);
+    await this.sharedLinkRepository.trackView(id, visitorHash, new Date());
+  }
+
+  async getViewAnalytics(auth: AuthDto, id: string, period: SharedLinkViewPeriod): Promise<SharedLinkViewResponseDto> {
+    await this.findOrFail(auth.user.id, id);
+    return this.getAnalytics(period, (startDate) => this.sharedLinkRepository.getViewAnalytics(id, startDate));
+  }
+
+  async getAlbumViewAnalytics(
+    auth: AuthDto,
+    albumId: string,
+    period: SharedLinkViewPeriod,
+  ): Promise<SharedLinkViewResponseDto> {
+    const owned = await this.accessRepository.album.checkOwnerAccess(auth.user.id, new Set([albumId]));
+    if (!owned.has(albumId)) {
+      throw new ForbiddenException();
+    }
+
+    return this.getAnalytics(period, (startDate) =>
+      this.sharedLinkRepository.getAlbumViewAnalytics(albumId, startDate),
+    );
+  }
+
+  private async getAnalytics(
+    period: SharedLinkViewPeriod,
+    getAnalytics: (startDate?: Date) => Promise<SharedLinkViewResponseDto>,
+  ): Promise<SharedLinkViewResponseDto> {
+    const days = period === SharedLinkViewPeriod.Days30 ? 30 : period === SharedLinkViewPeriod.Days90 ? 90 : undefined;
+    const startDate = days ? new Date(Date.now() - (days - 1) * 24 * 60 * 60 * 1000) : undefined;
+    startDate?.setUTCHours(0, 0, 0, 0);
+    const analytics = await getAnalytics(startDate);
+    if (!days || !startDate) {
+      return analytics;
+    }
+
+    const byDate = new Map(analytics.daily.map((item) => [item.date, item]));
+    const daily = Array.from({ length: days }, (_, index) => {
+      const date = new Date(startDate);
+      date.setUTCDate(date.getUTCDate() + index);
+      const dateString = date.toISOString().slice(0, 10);
+      return byDate.get(dateString) || { date: dateString, views: 0, uniqueBrowsers: 0 };
+    });
+
+    return { ...analytics, daily };
+  }
+
   async getAll(auth: AuthDto, { id, albumId }: SharedLinkSearchDto): Promise<SharedLinkResponseDto[]> {
     return this.sharedLinkRepository
       .getAll({ userId: auth.user.id, id, albumId })

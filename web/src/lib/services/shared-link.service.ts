@@ -9,12 +9,13 @@ import {
   type SharedLinkResponseDto,
 } from '@immich/sdk';
 import { modalManager, toastManager, type ActionItem } from '@immich/ui';
-import { mdiContentCopy, mdiLink, mdiPencilOutline, mdiQrcode, mdiTrashCanOutline } from '@mdi/js';
+import { mdiChartLine, mdiContentCopy, mdiLink, mdiPencilOutline, mdiQrcode, mdiTrashCanOutline } from '@mdi/js';
 import type { MessageFormatter } from 'svelte-i18n';
 import { goto } from '$app/navigation';
 import { eventManager } from '$lib/managers/event-manager.svelte';
 import { serverConfigManager } from '$lib/managers/server-config-manager.svelte';
 import QrCodeModal from '$lib/modals/QrCodeModal.svelte';
+import SharedLinkAnalyticsModal from '$lib/modals/SharedLinkAnalyticsModal.svelte';
 import { Route } from '$lib/route';
 import { copyToClipboard } from '$lib/utils';
 import { handleError } from '$lib/utils/handle-error';
@@ -31,6 +32,12 @@ export const getSharedLinksActions = ($t: MessageFormatter) => {
 };
 
 export const getSharedLinkActions = ($t: MessageFormatter, sharedLink: SharedLinkResponseDto) => {
+  const Analytics: ActionItem = {
+    title: $t('analytics'),
+    icon: mdiChartLine,
+    onAction: () => modalManager.show(SharedLinkAnalyticsModal, { target: { type: 'sharedLink', sharedLink } }),
+  };
+
   const Edit: ActionItem = {
     title: $t('edit_link'),
     icon: mdiPencilOutline,
@@ -56,7 +63,7 @@ export const getSharedLinkActions = ($t: MessageFormatter, sharedLink: SharedLin
     onAction: () => handleShowSharedLinkQrCode(sharedLink),
   };
 
-  return { Edit, Delete, Copy, ViewQrCode };
+  return { Analytics, Edit, Delete, Copy, ViewQrCode };
 };
 
 export const asUrl = (sharedLink: SharedLinkResponseDto) => {
@@ -65,6 +72,26 @@ export const asUrl = (sharedLink: SharedLinkResponseDto) => {
     : `share/${encodeURIComponent(sharedLink.key)}`;
   return new URL(path, serverConfigManager.value.externalDomain || globalThis.location.origin).href;
 };
+
+export const shouldTrackSharedLinkView = ({
+  authenticated,
+  userId,
+  ownerId,
+  passwordRequired,
+}: {
+  authenticated: boolean;
+  userId?: string;
+  ownerId: string;
+  passwordRequired: boolean;
+}) => !passwordRequired && (!authenticated || userId !== ownerId);
+
+export const shouldShowAlbumSharedLinkAnalytics = ({
+  isOwned,
+  hasSharedLink,
+}: {
+  isOwned: boolean;
+  hasSharedLink: boolean;
+}) => isOwned && hasSharedLink;
 
 export const handleCreateSharedLink = async (dto: SharedLinkCreateDto) => {
   const $t = await getFormatter();

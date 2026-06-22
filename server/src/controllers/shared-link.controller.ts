@@ -25,6 +25,8 @@ import {
   SharedLinkLoginDto,
   SharedLinkResponseDto,
   SharedLinkSearchDto,
+  SharedLinkViewQueryDto,
+  SharedLinkViewResponseDto,
 } from 'src/dtos/shared-link.dto';
 import { ApiTag, ImmichCookie, Permission } from 'src/enum';
 import { Auth, Authenticated, GetLoginDetails } from 'src/middleware/auth.guard';
@@ -97,6 +99,58 @@ export class SharedLinkController {
   })
   getMySharedLink(@Auth() auth: AuthDto, @Req() req: Request): Promise<SharedLinkResponseDto> {
     return this.service.getMine(auth, getAuthTokens(req.cookies));
+  }
+
+  @Post('views')
+  @Authenticated({ sharedLink: true })
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Endpoint({
+    summary: 'Record a shared link view',
+    description: 'Record a successful browser render for the current shared link.',
+    history: new HistoryBuilder().added('v2.4.0'),
+  })
+  async trackSharedLinkView(
+    @Auth() auth: AuthDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+    @GetLoginDetails() loginDetails: LoginDetails,
+  ): Promise<void> {
+    const visitorId = req.cookies?.[ImmichCookie.SharedLinkVisitor] || this.service.createVisitorId();
+    await this.service.trackView(auth, getAuthTokens(req.cookies), visitorId);
+    respondWithCookie(res, undefined, {
+      isSecure: loginDetails.isSecure,
+      values: [{ key: ImmichCookie.SharedLinkVisitor, value: visitorId }],
+    });
+  }
+
+  @Get(':id/views')
+  @Authenticated({ permission: Permission.SharedLinkRead })
+  @Endpoint({
+    summary: 'Retrieve shared link view analytics',
+    description: 'Retrieve private view analytics for a shared link owned by the current user.',
+    history: new HistoryBuilder().added('v2.4.0'),
+  })
+  getSharedLinkViews(
+    @Auth() auth: AuthDto,
+    @Param() { id }: UUIDParamDto,
+    @Query() dto: SharedLinkViewQueryDto,
+  ): Promise<SharedLinkViewResponseDto> {
+    return this.service.getViewAnalytics(auth, id, dto.period);
+  }
+
+  @Get('album/:id/views')
+  @Authenticated({ permission: Permission.SharedLinkRead })
+  @Endpoint({
+    summary: 'Retrieve album shared link view analytics',
+    description: 'Retrieve aggregate private view analytics for all shared links belonging to an owned album.',
+    history: new HistoryBuilder().added('v2.4.0'),
+  })
+  getAlbumSharedLinkViews(
+    @Auth() auth: AuthDto,
+    @Param() { id }: UUIDParamDto,
+    @Query() dto: SharedLinkViewQueryDto,
+  ): Promise<SharedLinkViewResponseDto> {
+    return this.service.getAlbumViewAnalytics(auth, id, dto.period);
   }
 
   @Get(':id')

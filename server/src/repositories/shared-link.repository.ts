@@ -212,6 +212,73 @@ export class SharedLinkRepository {
     await this.db.deleteFrom('shared_link').where('shared_link.id', '=', id).execute();
   }
 
+  trackView(sharedLinkId: string, visitorHash: Buffer, viewDate: Date) {
+    return this.db
+      .insertInto('shared_link_view')
+      .values({ sharedLinkId, visitorHash, viewDate })
+      .onConflict((oc) =>
+        oc.columns(['sharedLinkId', 'visitorHash', 'viewDate']).doUpdateSet({
+          viewCount: sql`shared_link_view."viewCount" + 1`,
+        }),
+      )
+      .execute();
+  }
+
+  async getViewAnalytics(sharedLinkId: string, startDate?: Date) {
+    const query = this.db
+      .selectFrom('shared_link_view')
+      .where('sharedLinkId', '=', sharedLinkId)
+      .$if(!!startDate, (qb) => qb.where('viewDate', '>=', startDate!));
+
+    const [summary, daily] = await Promise.all([
+      query
+        .select([
+          sql<number>`coalesce(sum("viewCount"), 0)::int`.as('totalViews'),
+          sql<number>`count(distinct "visitorHash")::int`.as('uniqueBrowsers'),
+        ])
+        .executeTakeFirstOrThrow(),
+      query
+        .select([
+          sql<string>`"viewDate"::text`.as('date'),
+          sql<number>`sum("viewCount")::int`.as('views'),
+          sql<number>`count(distinct "visitorHash")::int`.as('uniqueBrowsers'),
+        ])
+        .groupBy('viewDate')
+        .orderBy('viewDate')
+        .execute(),
+    ]);
+
+    return { ...summary, daily };
+  }
+
+  async getAlbumViewAnalytics(albumId: string, startDate?: Date) {
+    const query = this.db
+      .selectFrom('shared_link_view')
+      .innerJoin('shared_link', 'shared_link.id', 'shared_link_view.sharedLinkId')
+      .where('shared_link.albumId', '=', albumId)
+      .$if(!!startDate, (qb) => qb.where('shared_link_view.viewDate', '>=', startDate!));
+
+    const [summary, daily] = await Promise.all([
+      query
+        .select([
+          sql<number>`coalesce(sum("viewCount"), 0)::int`.as('totalViews'),
+          sql<number>`count(distinct "visitorHash")::int`.as('uniqueBrowsers'),
+        ])
+        .executeTakeFirstOrThrow(),
+      query
+        .select([
+          sql<string>`"viewDate"::text`.as('date'),
+          sql<number>`sum("viewCount")::int`.as('views'),
+          sql<number>`count(distinct "visitorHash")::int`.as('uniqueBrowsers'),
+        ])
+        .groupBy('viewDate')
+        .orderBy('viewDate')
+        .execute(),
+    ]);
+
+    return { ...summary, daily };
+  }
+
   @ChunkedArray({ paramIndex: 1 })
   async addAssets(id: string, assetIds: string[]) {
     if (assetIds.length === 0) {

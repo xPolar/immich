@@ -28,6 +28,70 @@ beforeAll(async () => {
 });
 
 describe(SharedLinkService.name, () => {
+  describe('view analytics', () => {
+    it('should atomically aggregate daily views and cascade them with the shared link', async () => {
+      const { ctx } = setup();
+      const { user } = await ctx.newUser();
+      const sharedLinkRepo = ctx.get(SharedLinkRepository);
+      const sharedLink = await sharedLinkRepo.create({
+        key: randomBytes(16),
+        id: factory.uuid(),
+        userId: user.id,
+        allowUpload: false,
+        type: SharedLinkType.Individual,
+      });
+      const visitorHash = randomBytes(32);
+
+      await Promise.all(
+        Array.from({ length: 5 }, () => sharedLinkRepo.trackView(sharedLink.id, visitorHash, new Date())),
+      );
+
+      await expect(sharedLinkRepo.getViewAnalytics(sharedLink.id)).resolves.toMatchObject({
+        totalViews: 5,
+        uniqueBrowsers: 1,
+        daily: [expect.objectContaining({ views: 5, uniqueBrowsers: 1 })],
+      });
+
+      await sharedLinkRepo.remove(sharedLink.id);
+      await expect(sharedLinkRepo.getViewAnalytics(sharedLink.id)).resolves.toMatchObject({
+        totalViews: 0,
+        uniqueBrowsers: 0,
+        daily: [],
+      });
+    });
+
+    it('should aggregate views and distinct browsers across album links', async () => {
+      const { ctx } = setup();
+      const { user } = await ctx.newUser();
+      const { album } = await ctx.newAlbum({ ownerId: user.id });
+      const sharedLinkRepo = ctx.get(SharedLinkRepository);
+      const links = await Promise.all(
+        [factory.uuid(), factory.uuid()].map((id) =>
+          sharedLinkRepo.create({
+            key: randomBytes(16),
+            id,
+            userId: user.id,
+            albumId: album.id,
+            allowUpload: false,
+            type: SharedLinkType.Album,
+          }),
+        ),
+      );
+      const browser1 = randomBytes(32);
+      const browser2 = randomBytes(32);
+
+      await sharedLinkRepo.trackView(links[0].id, browser1, new Date());
+      await sharedLinkRepo.trackView(links[1].id, browser1, new Date());
+      await sharedLinkRepo.trackView(links[1].id, browser2, new Date());
+
+      await expect(sharedLinkRepo.getAlbumViewAnalytics(album.id)).resolves.toMatchObject({
+        totalViews: 3,
+        uniqueBrowsers: 2,
+        daily: [expect.objectContaining({ views: 3, uniqueBrowsers: 2 })],
+      });
+    });
+  });
+
   describe('get', () => {
     it('should return the correct dates on the shared link album', async () => {
       const { sut, ctx } = setup();
