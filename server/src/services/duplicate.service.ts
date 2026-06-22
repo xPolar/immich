@@ -222,11 +222,20 @@ export class DuplicateService extends BaseService {
   }
 
   async stack(auth: AuthDto, dto: BulkIdsDto) {
-    await this.requireAccess({ auth, permission: Permission.DuplicateDelete, ids: dto.ids });
+    const allowedDuplicateIds = await this.checkAccess({
+      auth,
+      permission: Permission.DuplicateDelete,
+      ids: dto.ids,
+    });
 
     const results: BulkIdResponseDto[] = [];
 
     for (const duplicateId of dto.ids) {
+      if (!allowedDuplicateIds.has(duplicateId)) {
+        results.push({ id: duplicateId, success: false, error: BulkIdErrorReason.NOT_FOUND });
+        continue;
+      }
+
       try {
         results.push(await this.stackGroup(auth, duplicateId));
       } catch (error: Error | any) {

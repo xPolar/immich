@@ -313,9 +313,9 @@ describe(DuplicateService.name, () => {
     it('should report failures without stopping the remaining groups', async () => {
       const asset1 = AssetFactory.create();
       const asset2 = AssetFactory.create();
-      mocks.access.duplicate.checkOwnerAccess.mockResolvedValue(new Set(['group-1', 'group-2']));
+      mocks.access.duplicate.checkOwnerAccess.mockResolvedValue(new Set(['group-2']));
       mocks.access.asset.checkOwnerAccess.mockResolvedValue(new Set([asset1.id, asset2.id]));
-      mocks.duplicateRepository.get.mockResolvedValueOnce(void 0).mockResolvedValueOnce({
+      mocks.duplicateRepository.get.mockResolvedValueOnce({
         duplicateId: 'group-2',
         assets: [asset1 as unknown as MapAsset, asset2 as unknown as MapAsset],
       });
