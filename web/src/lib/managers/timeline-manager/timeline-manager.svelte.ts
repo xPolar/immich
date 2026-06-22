@@ -1,6 +1,6 @@
 import { AssetOrder, getAssetInfo, getTimeBuckets, AssetOrderBy, type AssetResponseDto } from '@immich/sdk';
 import { clamp, isEqual } from 'lodash-es';
-import { SvelteDate, SvelteSet } from 'svelte/reactivity';
+import { SvelteDate, SvelteMap, SvelteSet } from 'svelte/reactivity';
 import { VirtualScrollManager } from '$lib/managers/VirtualScrollManager/VirtualScrollManager.svelte';
 import { authManager } from '$lib/managers/auth-manager.svelte';
 import { eventManager } from '$lib/managers/event-manager.svelte';
@@ -95,6 +95,8 @@ export class TimelineManager extends VirtualScrollManager {
   #updatingViewportProximities = false;
   #scrollableElement: HTMLElement | undefined = $state();
   #showAssetOwners = new PersistedLocalStorage<boolean>('album-show-asset-owners', false);
+  #timelineDayCollapseOverrides = new SvelteMap<string, boolean>();
+  #timelineDaysCollapsedByDefault = false;
   #unsubscribes: Array<() => void> = [];
 
   get showAssetOwners() {
@@ -107,6 +109,58 @@ export class TimelineManager extends VirtualScrollManager {
 
   toggleShowAssetOwners() {
     this.#showAssetOwners.current = !this.#showAssetOwners.current;
+  }
+
+  #getTimelineDayId(timelineDay: TimelineDay) {
+    const { year, month } = timelineDay.timelineMonth.yearMonth;
+    return `${year}-${month}-${timelineDay.day}`;
+  }
+
+  isTimelineDayCollapsed(timelineDay: TimelineDay) {
+    return (
+      this.#timelineDayCollapseOverrides.get(this.#getTimelineDayId(timelineDay)) ??
+      this.#timelineDaysCollapsedByDefault
+    );
+  }
+
+  setTimelineDayCollapsed(timelineDay: TimelineDay, isCollapsed: boolean) {
+    if (timelineDay.isCollapsed === isCollapsed) {
+      return;
+    }
+
+    const timelineDayId = this.#getTimelineDayId(timelineDay);
+    if (isCollapsed === this.#timelineDaysCollapsedByDefault) {
+      this.#timelineDayCollapseOverrides.delete(timelineDayId);
+    } else {
+      this.#timelineDayCollapseOverrides.set(timelineDayId, isCollapsed);
+    }
+
+    timelineDay.isCollapsed = isCollapsed;
+    updateGeometry(this, timelineDay.timelineMonth, { invalidateHeight: true, noDefer: true });
+    this.updateViewportProximities();
+    this.#createScrubberMonths();
+  }
+
+  toggleTimelineDayCollapsed(timelineDay: TimelineDay) {
+    this.setTimelineDayCollapsed(timelineDay, !timelineDay.isCollapsed);
+  }
+
+  setAllTimelineDaysCollapsed(isCollapsed: boolean) {
+    this.#timelineDaysCollapsedByDefault = isCollapsed;
+    this.#timelineDayCollapseOverrides.clear();
+
+    for (const month of this.months) {
+      if (!month.isLoaded) {
+        continue;
+      }
+      for (const timelineDay of month.timelineDays) {
+        timelineDay.isCollapsed = isCollapsed;
+      }
+      updateGeometry(this, month, { invalidateHeight: true, noDefer: true });
+    }
+
+    this.updateViewportProximities();
+    this.#createScrubberMonths();
   }
 
   constructor() {

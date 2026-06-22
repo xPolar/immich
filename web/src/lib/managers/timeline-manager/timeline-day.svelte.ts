@@ -36,6 +36,7 @@ export class TimelineDay {
 
   height = $state(0);
   width = $state(0);
+  isCollapsed = $state(false);
 
   // Assets in or near the viewport; active assets should be added to the DOM.
   activeViewerAssets: ViewerAsset[] = $state([]);
@@ -53,6 +54,7 @@ export class TimelineDay {
     this.day = day;
     this.groupTitle = groupTitle;
     this.orderBy = orderBy;
+    this.isCollapsed = timelineMonth.timelineManager.isTimelineDayCollapsed(this);
   }
 
   get top() {
@@ -159,6 +161,13 @@ export class TimelineDay {
   }
 
   layout(options: CommonLayoutOptions, noDefer: boolean) {
+    if (this.isCollapsed) {
+      this.#deferredLayout = false;
+      this.width = options.rowWidth;
+      this.height = 0;
+      this.activeViewerAssets = [];
+      return;
+    }
     if (!noDefer && !this.timelineMonth.isInOrNearViewport && !this.timelineMonth.timelineManager.isScrollingOnLoad) {
       this.#deferredLayout = true;
       return;
@@ -177,6 +186,14 @@ export class TimelineDay {
   updateAssetBoundaries() {
     const manager = this.timelineMonth.timelineManager;
     const visibleWindow = manager.visibleWindow;
+    if (this.isCollapsed) {
+      const headerTop = this.absoluteTimelineDayTop;
+      this.activeViewerAssets = [];
+      this.isInOrNearViewport =
+        headerTop + manager.headerHeight >= visibleWindow.top - INTERSECTION_EXPAND_TOP &&
+        headerTop <= visibleWindow.bottom + INTERSECTION_EXPAND_BOTTOM;
+      return;
+    }
     if (this.viewerAssets.length === 0 || !this.viewerAssets[0].position) {
       this.activeViewerAssets = [];
       this.isInOrNearViewport = false;
