@@ -12,6 +12,7 @@ where
   and "asset_exif"."lensModel" = $3
   and "asset"."ownerId" = any ($4::uuid[])
   and "asset"."isFavorite" = $5
+  and "asset"."stackId" is not null
   and "asset"."deletedAt" is null
 order by
   "asset"."fileCreatedAt" desc
@@ -88,6 +89,7 @@ where
   and "asset_exif"."lensModel" = $3
   and "asset"."ownerId" = any ($4::uuid[])
   and "asset"."isFavorite" = $5
+  and "asset"."stackId" is not null
   and "asset"."deletedAt" is null
 order by
   smart_search.embedding <=> $6

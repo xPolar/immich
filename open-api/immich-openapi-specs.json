@@ -10260,6 +10260,15 @@
             }
           },
           {
+            "name": "isStacked",
+            "required": false,
+            "in": "query",
+            "description": "Filter by stacked status",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "lensModel",
             "required": false,
             "in": "query",
@@ -20100,6 +20109,10 @@
             "description": "Filter by offline status",
             "type": "boolean"
           },
+          "isStacked": {
+            "description": "Filter by stacked status",
+            "type": "boolean"
+          },
           "lensModel": {
             "description": "Filter by lens model",
             "nullable": true,
@@ -21814,6 +21827,10 @@
             "description": "Filter by offline status",
             "type": "boolean"
           },
+          "isStacked": {
+            "description": "Filter by stacked status",
+            "type": "boolean"
+          },
           "lensModel": {
             "description": "Filter by lens model",
             "nullable": true,
@@ -23273,6 +23290,10 @@
             "description": "Filter by offline status",
             "type": "boolean"
           },
+          "isStacked": {
+            "description": "Filter by stacked status",
+            "type": "boolean"
+          },
           "language": {
             "description": "Search language code",
             "type": "string"
@@ -23560,6 +23581,10 @@
           },
           "isOffline": {
             "description": "Filter by offline status",
+            "type": "boolean"
+          },
+          "isStacked": {
+            "description": "Filter by stacked status",
             "type": "boolean"
           },
           "lensModel": {
