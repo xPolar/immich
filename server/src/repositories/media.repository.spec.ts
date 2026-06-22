@@ -7,6 +7,7 @@ import { LoggingRepository } from 'src/repositories/logging.repository';
 import { BoundingBox } from 'src/repositories/machine-learning.repository';
 import { MediaRepository } from 'src/repositories/media.repository';
 import { checkFaceVisibility, checkOcrVisibility } from 'src/utils/editor';
+import { getHammingDistance } from 'src/utils/perceptual-hash';
 import { automock } from 'test/utils';
 
 const getPixelColor = async (buffer: Buffer, x: number, y: number) => {
@@ -67,6 +68,22 @@ describe(MediaRepository.name, () => {
   beforeEach(() => {
     // eslint-disable-next-line no-sparse-arrays
     sut = new MediaRepository(automock(LoggingRepository, { args: [, { getEnv: () => ({}) }], strict: false }));
+  });
+
+  describe('getPerceptualHash', () => {
+    it('should match the same image encoded as JPEG and PNG but reject a different image', async () => {
+      const source = await buildTestQuadImage();
+      const jpeg = await sharp(source).jpeg({ quality: 85 }).toBuffer();
+      const png = await sharp(source).png().toBuffer();
+      const different = await sharp(source).rotate(90).png().toBuffer();
+
+      const jpegHash = await sut.getPerceptualHash(jpeg);
+      const pngHash = await sut.getPerceptualHash(png);
+      const differentHash = await sut.getPerceptualHash(different);
+
+      expect(getHammingDistance(jpegHash, pngHash)).toBeLessThanOrEqual(6);
+      expect(getHammingDistance(jpegHash, differentHash)).toBeGreaterThan(6);
+    });
   });
 
   describe('applyEdits (single actions)', () => {

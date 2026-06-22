@@ -414,6 +414,8 @@ export type JobItem =
   // Duplicate Detection
   | { name: JobName.AssetDetectDuplicatesQueueAll; data: IBaseJob }
   | { name: JobName.AssetDetectDuplicates; data: IEntityJob }
+  | { name: JobName.AssetAutoStackDuplicatesQueueAll; data: IBaseJob }
+  | { name: JobName.AssetAutoStackDuplicates; data: IEntityJob }
 
   // Memories
   | { name: JobName.MemoryCleanup; data?: IBaseJob }

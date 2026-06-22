@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { defaults } from 'src/config';
 import { BulkIdErrorReason } from 'src/dtos/asset-ids.response.dto';
 import { MapAsset } from 'src/dtos/asset-response.dto';
 import { AssetType, AssetVisibility, JobName, JobStatus } from 'src/enum';
@@ -26,6 +27,32 @@ const hasDupe = {
   ...hasEmbedding,
   id: 'asset-2',
   duplicateId: 'duplicate-id',
+};
+
+const autoStackAsset = (
+  id: string,
+  originalFileName: string,
+  options: {
+    fileSizeInByte?: number;
+    ownerId?: string;
+    previewPath?: string | null;
+    stackId?: string | null;
+  } = {},
+) => ({
+  id,
+  ownerId: options.ownerId ?? 'user-id',
+  originalFileName,
+  type: AssetType.Image,
+  visibility: AssetVisibility.Timeline,
+  stackId: options.stackId ?? null,
+  fileSizeInByte: options.fileSizeInByte ?? 1000,
+  previewPath: options.previewPath === undefined ? `/preview/${id}.jpeg` : options.previewPath,
+});
+
+const autoStackConfig = () => {
+  const config = structuredClone(defaults);
+  config.machineLearning.duplicateDetection.autoStack = true;
+  return config;
 };
 
 describe(DuplicateService.name, () => {
@@ -503,6 +530,23 @@ describe(DuplicateService.name, () => {
       );
     });
 
+    it('should enqueue auto-stacking for the updated duplicate group when enabled', async () => {
+      const config = structuredClone(defaults);
+      config.machineLearning.duplicateDetection.autoStack = true;
+      mocks.systemMetadata.get.mockResolvedValue(config);
+      mocks.assetJob.getForSearchDuplicatesJob.mockResolvedValue(hasEmbedding);
+      mocks.duplicateRepository.search.mockResolvedValue([{ assetId: hasDupe.id, distance: 0.01, duplicateId: null }]);
+      mocks.duplicateRepository.merge.mockResolvedValue();
+      mocks.crypto.randomUUID.mockReturnValue('duplicate-id');
+
+      await expect(sut.handleSearchDuplicates({ id: hasEmbedding.id })).resolves.toBe(JobStatus.Success);
+
+      expect(mocks.job.queue).toHaveBeenCalledWith({
+        name: JobName.AssetAutoStackDuplicates,
+        data: { id: 'duplicate-id' },
+      });
+    });
+
     it('should use existing duplicate ID among matched duplicates', async () => {
       const duplicateId = hasDupe.duplicateId;
       mocks.assetJob.getForSearchDuplicatesJob.mockResolvedValue(hasEmbedding);
@@ -542,6 +586,160 @@ describe(DuplicateService.name, () => {
         assetId: hasDupe.id,
         duplicatesDetectedAt: expect.any(Date),
       });
+    });
+  });
+
+  describe('automatic duplicate stacking', () => {
+    it('should enqueue a backfill on startup and when enabled', async () => {
+      const enabled = autoStackConfig();
+      const disabled = structuredClone(enabled);
+      disabled.machineLearning.duplicateDetection.autoStack = false;
+
+      await sut.onConfigInit({ newConfig: enabled });
+      await sut.onConfigUpdate({ oldConfig: disabled, newConfig: enabled });
+
+      expect(mocks.job.queue).toHaveBeenCalledTimes(2);
+      expect(mocks.job.queue).toHaveBeenCalledWith({
+        name: JobName.AssetAutoStackDuplicatesQueueAll,
+        data: {},
+      });
+    });
+
+    it('should not enqueue a backfill while disabled', async () => {
+      const disabled = structuredClone(defaults);
+
+      await sut.onConfigInit({ newConfig: disabled });
+      await sut.onConfigUpdate({ oldConfig: disabled, newConfig: disabled });
+
+      expect(mocks.job.queue).not.toHaveBeenCalled();
+    });
+
+    it('should fan out existing duplicate groups', async () => {
+      mocks.systemMetadata.get.mockResolvedValue(autoStackConfig());
+      mocks.duplicateRepository.streamForAutoStack.mockReturnValue(makeStream([{ id: 'group-1' }, { id: 'group-2' }]));
+
+      await expect(sut.handleQueueAutoStackDuplicates()).resolves.toBe(JobStatus.Success);
+
+      expect(mocks.job.queueAll).toHaveBeenCalledWith([
+        { name: JobName.AssetAutoStackDuplicates, data: { id: 'group-1' } },
+        { name: JobName.AssetAutoStackDuplicates, data: { id: 'group-2' } },
+      ]);
+    });
+
+    it('should skip queue-all and per-group jobs while disabled', async () => {
+      mocks.systemMetadata.get.mockResolvedValue(defaults);
+
+      await expect(sut.handleQueueAutoStackDuplicates()).resolves.toBe(JobStatus.Skipped);
+      await expect(sut.handleAutoStackDuplicates({ id: 'group-1' })).resolves.toBe(JobStatus.Skipped);
+
+      expect(mocks.duplicateRepository.streamForAutoStack).not.toHaveBeenCalled();
+      expect(mocks.duplicateRepository.getForAutoStack).not.toHaveBeenCalled();
+    });
+
+    it('should choose JPEG, larger file, and ID order as the primary and emit StackCreate', async () => {
+      mocks.systemMetadata.get.mockResolvedValue(autoStackConfig());
+      mocks.duplicateRepository.getForAutoStack.mockResolvedValue([
+        autoStackAsset('raw', 'photo.nef', { fileSizeInByte: 9000 }),
+        autoStackAsset('png', 'photo.png', { fileSizeInByte: 8000 }),
+        autoStackAsset('jpeg-b', 'photo.jpeg', { fileSizeInByte: 3000 }),
+        autoStackAsset('jpeg-a', 'photo.jpg', { fileSizeInByte: 3000 }),
+      ]);
+      mocks.media.getPerceptualHash.mockResolvedValue(1n);
+      mocks.stack.create.mockResolvedValue({ id: 'stack-id' } as any);
+
+      await expect(sut.handleAutoStackDuplicates({ id: 'group-1' })).resolves.toBe(JobStatus.Success);
+
+      expect(mocks.stack.create).toHaveBeenCalledWith({ ownerId: 'user-id' }, ['jpeg-a', 'jpeg-b', 'png', 'raw'], {
+        clearDuplicateId: true,
+      });
+      expect(mocks.event.emit).toHaveBeenCalledWith('StackCreate', {
+        stackId: 'stack-id',
+        userId: 'user-id',
+      });
+    });
+
+    it('should skip same-format copies', async () => {
+      mocks.systemMetadata.get.mockResolvedValue(autoStackConfig());
+      mocks.duplicateRepository.getForAutoStack.mockResolvedValue([
+        autoStackAsset('jpeg-1', 'one.jpg'),
+        autoStackAsset('jpeg-2', 'two.jpeg'),
+      ]);
+      mocks.media.getPerceptualHash.mockResolvedValue(1n);
+
+      await expect(sut.handleAutoStackDuplicates({ id: 'group-1' })).resolves.toBe(JobStatus.Skipped);
+      expect(mocks.stack.create).not.toHaveBeenCalled();
+    });
+
+    it('should skip perceptually different mixed formats', async () => {
+      mocks.systemMetadata.get.mockResolvedValue(autoStackConfig());
+      mocks.duplicateRepository.getForAutoStack.mockResolvedValue([
+        autoStackAsset('jpeg', 'one.jpg'),
+        autoStackAsset('png', 'two.png'),
+      ]);
+      mocks.media.getPerceptualHash.mockResolvedValueOnce(0n).mockResolvedValueOnce((1n << 64n) - 1n);
+
+      await expect(sut.handleAutoStackDuplicates({ id: 'group-1' })).resolves.toBe(JobStatus.Skipped);
+      expect(mocks.stack.create).not.toHaveBeenCalled();
+    });
+
+    it('should not join dissimilar endpoints through a transitive perceptual match', async () => {
+      mocks.systemMetadata.get.mockResolvedValue(autoStackConfig());
+      mocks.duplicateRepository.getForAutoStack.mockResolvedValue([
+        autoStackAsset('raw-c', 'three.nef'),
+        autoStackAsset('png-b', 'two.png'),
+        autoStackAsset('jpeg-a', 'one.jpg'),
+      ]);
+      mocks.media.getPerceptualHash.mockImplementation((path) => {
+        if (path === '/preview/jpeg-a.jpeg') {
+          return Promise.resolve(0n);
+        }
+        if (path === '/preview/png-b.jpeg') {
+          return Promise.resolve(0b11_1111n);
+        }
+        return Promise.resolve(0b1111_1111_1111n);
+      });
+      mocks.stack.create.mockResolvedValue({ id: 'stack-id' } as any);
+
+      await expect(sut.handleAutoStackDuplicates({ id: 'group-1' })).resolves.toBe(JobStatus.Success);
+
+      expect(mocks.stack.create).toHaveBeenCalledOnce();
+      expect(mocks.stack.create).toHaveBeenCalledWith({ ownerId: 'user-id' }, ['jpeg-a', 'png-b'], {
+        clearDuplicateId: true,
+      });
+      expect(mocks.stack.create).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.arrayContaining(['jpeg-a', 'raw-c']),
+        expect.anything(),
+      );
+    });
+
+    it('should refuse to stack a component containing multiple owners', async () => {
+      mocks.systemMetadata.get.mockResolvedValue(autoStackConfig());
+      mocks.duplicateRepository.getForAutoStack.mockResolvedValue([
+        autoStackAsset('jpeg', 'one.jpg'),
+        autoStackAsset('png', 'two.png', { ownerId: 'other-user-id' }),
+      ]);
+      mocks.media.getPerceptualHash.mockResolvedValue(1n);
+
+      await expect(sut.handleAutoStackDuplicates({ id: 'group-1' })).resolves.toBe(JobStatus.Skipped);
+
+      expect(mocks.stack.create).not.toHaveBeenCalled();
+      expect(mocks.logger.warn).toHaveBeenCalledWith(
+        'Refusing to auto-stack duplicate group group-1 with assets from multiple owners',
+      );
+    });
+
+    it('should skip assets that are already stacked or missing a preview', async () => {
+      mocks.systemMetadata.get.mockResolvedValue(autoStackConfig());
+      mocks.duplicateRepository.getForAutoStack.mockResolvedValue([
+        autoStackAsset('jpeg', 'one.jpg'),
+        autoStackAsset('png-stacked', 'two.png', { stackId: 'stack-id' }),
+        autoStackAsset('png-no-preview', 'three.png', { previewPath: null }),
+      ]);
+
+      await expect(sut.handleAutoStackDuplicates({ id: 'group-1' })).resolves.toBe(JobStatus.Skipped);
+      expect(mocks.media.getPerceptualHash).not.toHaveBeenCalled();
+      expect(mocks.stack.create).not.toHaveBeenCalled();
     });
   });
 });

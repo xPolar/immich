@@ -60,7 +60,11 @@ export class StackRepository {
       .execute();
   }
 
-  async create(entity: Omit<Insertable<StackTable>, 'primaryAssetId'>, assetIds: string[]) {
+  async create(
+    entity: Omit<Insertable<StackTable>, 'primaryAssetId'>,
+    assetIds: string[],
+    options: { clearDuplicateId?: boolean } = {},
+  ) {
     return this.db.transaction().execute(async (tx) => {
       const stacks = await tx
         .selectFrom('stack')
@@ -111,6 +115,7 @@ export class StackRepository {
         .set({
           stackId: newRecord.id,
           updatedAt: new Date(),
+          ...(options.clearDuplicateId ? { duplicateId: null } : {}),
         })
         .where('id', 'in', [...uniqueIds])
         .execute();

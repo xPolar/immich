@@ -5,11 +5,11 @@ import { InjectKysely } from 'nestjs-kysely';
 import { columns } from 'src/database';
 import { Chunked, DummyValue, GenerateSql } from 'src/decorators';
 import { MapAsset } from 'src/dtos/asset-response.dto';
-import { AssetType, VectorIndex } from 'src/enum';
+import { AssetFileType, AssetType, AssetVisibility, VectorIndex } from 'src/enum';
 import { probes } from 'src/repositories/database.repository';
 import { DB } from 'src/schema';
 import { AssetExifTable } from 'src/schema/tables/asset-exif.table';
-import { anyUuid, asUuid, withDefaultVisibility } from 'src/utils/database';
+import { anyUuid, asUuid, withDefaultVisibility, withFilePath } from 'src/utils/database';
 
 // Maximum number of candidate duplicates to return from vector search
 const DUPLICATE_SEARCH_LIMIT = 64;
@@ -152,6 +152,44 @@ export class DuplicateRepository {
     }
 
     return { duplicateId: result.duplicateId, assets: result.assets };
+  }
+
+  @GenerateSql({ params: [], stream: true })
+  streamForAutoStack() {
+    return this.db
+      .selectFrom('asset')
+      .select('asset.duplicateId as id')
+      .distinct()
+      .where('asset.duplicateId', 'is not', null)
+      .$narrowType<{ id: NotNull }>()
+      .where('asset.type', '=', AssetType.Image)
+      .where('asset.visibility', 'in', [AssetVisibility.Archive, AssetVisibility.Timeline])
+      .where('asset.deletedAt', 'is', null)
+      .where('asset.stackId', 'is', null)
+      .stream();
+  }
+
+  @GenerateSql({ params: [DummyValue.UUID] })
+  getForAutoStack(duplicateId: string) {
+    return this.db
+      .selectFrom('asset')
+      .leftJoin('asset_exif', 'asset_exif.assetId', 'asset.id')
+      .select([
+        'asset.id',
+        'asset.ownerId',
+        'asset.originalFileName',
+        'asset.type',
+        'asset.visibility',
+        'asset.stackId',
+        'asset_exif.fileSizeInByte',
+      ])
+      .select((eb) => withFilePath(eb, AssetFileType.Preview).as('previewPath'))
+      .where('asset.duplicateId', '=', asUuid(duplicateId))
+      .where('asset.type', '=', AssetType.Image)
+      .where('asset.visibility', 'in', [AssetVisibility.Archive, AssetVisibility.Timeline])
+      .where('asset.deletedAt', 'is', null)
+      .where('asset.stackId', 'is', null)
+      .execute();
   }
 
   @GenerateSql({ params: [DummyValue.UUID, DummyValue.UUID] })

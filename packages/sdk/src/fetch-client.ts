@@ -2432,6 +2432,10 @@ export type ClipConfig = {
     modelName: string;
 };
 export type DuplicateDetectionConfig = {
+    /** Whether to automatically stack visually identical mixed-format images */
+    autoStack: boolean;
+    /** Maximum perceptual hash Hamming distance for automatic stacking */
+    autoStackThreshold: number;
     /** Whether the task is enabled */
     enabled: boolean;
     /** Maximum distance threshold for duplicate detection */
@@ -7423,6 +7427,8 @@ export enum JobName {
     AssetDetectFaces = "AssetDetectFaces",
     AssetDetectDuplicatesQueueAll = "AssetDetectDuplicatesQueueAll",
     AssetDetectDuplicates = "AssetDetectDuplicates",
+    AssetAutoStackDuplicatesQueueAll = "AssetAutoStackDuplicatesQueueAll",
+    AssetAutoStackDuplicates = "AssetAutoStackDuplicates",
     AssetEditThumbnailGeneration = "AssetEditThumbnailGeneration",
     AssetEncodeVideoQueueAll = "AssetEncodeVideoQueueAll",
     AssetEncodeVideo = "AssetEncodeVideo",

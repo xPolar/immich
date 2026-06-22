@@ -1,16 +1,59 @@
 import { Injectable } from '@nestjs/common';
+import { extname } from 'node:path';
 import { JOBS_ASSET_PAGINATION_SIZE } from 'src/constants';
-import { OnJob } from 'src/decorators';
+import { OnEvent, OnJob } from 'src/decorators';
 import { BulkIdErrorReason, BulkIdResponseDto, BulkIdsDto } from 'src/dtos/asset-ids.response.dto';
 import { MapAsset, mapAsset } from 'src/dtos/asset-response.dto';
 import { AuthDto } from 'src/dtos/auth.dto';
 import { DuplicateResolveDto, DuplicateResolveGroupDto, DuplicateResponseDto } from 'src/dtos/duplicate.dto';
-import { AssetStatus, AssetVisibility, JobName, JobStatus, Permission, QueueName } from 'src/enum';
+import { AssetStatus, AssetVisibility, DatabaseLock, JobName, JobStatus, Permission, QueueName } from 'src/enum';
+import { ArgOf } from 'src/repositories/event.repository';
 import { AssetDuplicateResult } from 'src/repositories/search.repository';
 import { BaseService } from 'src/services/base.service';
 import { JobItem, JobOf } from 'src/types';
 import { suggestDuplicateKeepAssetIds } from 'src/utils/duplicate';
+import { mimeTypes } from 'src/utils/mime-types';
 import { isDuplicateDetectionEnabled } from 'src/utils/misc';
+import { getHammingDistance } from 'src/utils/perceptual-hash';
+
+enum AutoStackFormat {
+  Jpeg,
+  Png,
+  Raw,
+}
+
+type AutoStackAsset = Awaited<ReturnType<DuplicateService['duplicateRepository']['getForAutoStack']>>[number] & {
+  format: AutoStackFormat;
+  hash: bigint;
+};
+
+const compareAutoStackAssets = (
+  first: Pick<AutoStackAsset, 'fileSizeInByte' | 'format' | 'id'>,
+  second: Pick<AutoStackAsset, 'fileSizeInByte' | 'format' | 'id'>,
+) => {
+  if (first.format !== second.format) {
+    return first.format - second.format;
+  }
+  const firstSize = first.fileSizeInByte ?? 0;
+  const secondSize = second.fileSizeInByte ?? 0;
+  if (firstSize !== secondSize) {
+    return firstSize > secondSize ? -1 : 1;
+  }
+  return first.id.localeCompare(second.id);
+};
+
+const getAutoStackFormat = (fileName: string): AutoStackFormat | undefined => {
+  const extension = extname(fileName).toLowerCase();
+  if (['.jpg', '.jpeg', '.jpe'].includes(extension)) {
+    return AutoStackFormat.Jpeg;
+  }
+  if (extension === '.png') {
+    return AutoStackFormat.Png;
+  }
+  if (mimeTypes.isRaw(fileName)) {
+    return AutoStackFormat.Raw;
+  }
+};
 
 type ResolveRequest = {
   assetUpdate: {
@@ -66,6 +109,24 @@ const getUniqueCoordinate = (assets: MapAsset[], key: 'latitude' | 'longitude'):
 
 @Injectable()
 export class DuplicateService extends BaseService {
+  @OnEvent({ name: 'ConfigInit', server: true })
+  async onConfigInit({ newConfig: { machineLearning } }: ArgOf<'ConfigInit'>) {
+    if (isDuplicateDetectionEnabled(machineLearning) && machineLearning.duplicateDetection.autoStack) {
+      await this.jobRepository.queue({ name: JobName.AssetAutoStackDuplicatesQueueAll, data: {} });
+    }
+  }
+
+  @OnEvent({ name: 'ConfigUpdate', server: true })
+  async onConfigUpdate({ oldConfig, newConfig }: ArgOf<'ConfigUpdate'>) {
+    if (
+      !oldConfig.machineLearning.duplicateDetection.autoStack &&
+      isDuplicateDetectionEnabled(newConfig.machineLearning) &&
+      newConfig.machineLearning.duplicateDetection.autoStack
+    ) {
+      await this.jobRepository.queue({ name: JobName.AssetAutoStackDuplicatesQueueAll, data: {} });
+    }
+  }
+
   async getDuplicates(auth: AuthDto): Promise<DuplicateResponseDto[]> {
     // Clean up singleton groups (assets that are the only member of their duplicate group)
     await this.duplicateRepository.cleanupSingletonGroups(auth.user.id);
@@ -372,7 +433,11 @@ export class DuplicateService extends BaseService {
       this.logger.debug(
         `Found ${duplicateAssets.length} duplicate${duplicateAssets.length === 1 ? '' : 's'} for asset ${asset.id}`,
       );
-      assetIds = await this.updateDuplicates(asset, duplicateAssets);
+      const result = await this.updateDuplicates(asset, duplicateAssets);
+      assetIds = result.assetIds;
+      if (machineLearning.duplicateDetection.autoStack) {
+        await this.jobRepository.queue({ name: JobName.AssetAutoStackDuplicates, data: { id: result.duplicateId } });
+      }
     } else if (asset.duplicateId) {
       this.logger.debug(`No duplicates found for asset ${asset.id}, removing duplicateId`);
       await this.assetRepository.update({ id: asset.id, duplicateId: null });
@@ -387,7 +452,7 @@ export class DuplicateService extends BaseService {
   private async updateDuplicates(
     asset: { id: string; duplicateId: string | null },
     duplicateAssets: AssetDuplicateResult[],
-  ): Promise<string[]> {
+  ): Promise<{ assetIds: string[]; duplicateId: string }> {
     const duplicateIds = [
       ...new Set(
         duplicateAssets
@@ -407,6 +472,99 @@ export class DuplicateService extends BaseService {
       assetIds: assetIdsToUpdate,
       sourceIds: duplicateIds,
     });
-    return assetIdsToUpdate;
+    return { assetIds: assetIdsToUpdate, duplicateId: targetDuplicateId };
+  }
+
+  @OnJob({ name: JobName.AssetAutoStackDuplicatesQueueAll, queue: QueueName.DuplicateDetection })
+  async handleQueueAutoStackDuplicates(): Promise<JobStatus> {
+    const { machineLearning } = await this.getConfig({ withCache: false });
+    if (!isDuplicateDetectionEnabled(machineLearning) || !machineLearning.duplicateDetection.autoStack) {
+      return JobStatus.Skipped;
+    }
+
+    let jobs: JobItem[] = [];
+    const queueAll = async () => {
+      await this.jobRepository.queueAll(jobs);
+      jobs = [];
+    };
+
+    for await (const { id } of this.duplicateRepository.streamForAutoStack()) {
+      jobs.push({ name: JobName.AssetAutoStackDuplicates, data: { id } });
+      if (jobs.length >= JOBS_ASSET_PAGINATION_SIZE) {
+        await queueAll();
+      }
+    }
+    await queueAll();
+    return JobStatus.Success;
+  }
+
+  @OnJob({ name: JobName.AssetAutoStackDuplicates, queue: QueueName.DuplicateDetection })
+  async handleAutoStackDuplicates({ id }: JobOf<JobName.AssetAutoStackDuplicates>): Promise<JobStatus> {
+    const { machineLearning } = await this.getConfig({ withCache: true });
+    if (!isDuplicateDetectionEnabled(machineLearning) || !machineLearning.duplicateDetection.autoStack) {
+      return JobStatus.Skipped;
+    }
+
+    return this.databaseRepository.withLock(DatabaseLock.AutoStack, () =>
+      this.autoStackDuplicates(id, machineLearning.duplicateDetection.autoStackThreshold),
+    );
+  }
+
+  private async autoStackDuplicates(id: string, threshold: number): Promise<JobStatus> {
+    const group = await this.duplicateRepository.getForAutoStack(id);
+    const candidates = group
+      .map((asset) => ({ ...asset, format: getAutoStackFormat(asset.originalFileName) }))
+      .filter(
+        (asset): asset is typeof asset & { format: AutoStackFormat; previewPath: string } =>
+          asset.format !== undefined &&
+          !!asset.previewPath &&
+          !asset.stackId &&
+          [AssetVisibility.Archive, AssetVisibility.Timeline].includes(asset.visibility),
+      );
+    if (candidates.length < 2) {
+      return JobStatus.Skipped;
+    }
+
+    candidates.sort(compareAutoStackAssets);
+    const assets: AutoStackAsset[] = await Promise.all(
+      candidates.map(async (asset) => ({
+        ...asset,
+        hash: await this.mediaRepository.getPerceptualHash(asset.previewPath),
+      })),
+    );
+    const components: AutoStackAsset[][] = [];
+    for (const asset of assets) {
+      const component = components.find((component) =>
+        component.every((member) => getHammingDistance(member.hash, asset.hash) <= threshold),
+      );
+      if (component) {
+        component.push(asset);
+      } else {
+        components.push([asset]);
+      }
+    }
+
+    let created = 0;
+    for (const component of components) {
+      if (component.length < 2 || new Set(component.map(({ format }) => format)).size < 2) {
+        continue;
+      }
+
+      const ownerIds = new Set(component.map(({ ownerId }) => ownerId));
+      if (ownerIds.size !== 1) {
+        this.logger.warn(`Refusing to auto-stack duplicate group ${id} with assets from multiple owners`);
+        continue;
+      }
+
+      const stack = await this.stackRepository.create(
+        { ownerId: component[0].ownerId },
+        component.map(({ id }) => id),
+        { clearDuplicateId: true },
+      );
+      await this.eventRepository.emit('StackCreate', { stackId: stack.id, userId: component[0].ownerId });
+      created++;
+    }
+
+    return created > 0 ? JobStatus.Success : JobStatus.Skipped;
   }
 }

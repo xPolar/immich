@@ -127,6 +127,47 @@ where
 group by
   "asset"."duplicateId"
 
+-- DuplicateRepository.streamForAutoStack
+select distinct
+  "asset"."duplicateId" as "id"
+from
+  "asset"
+where
+  "asset"."duplicateId" is not null
+  and "asset"."type" = $1
+  and "asset"."visibility" in ($2, $3)
+  and "asset"."deletedAt" is null
+  and "asset"."stackId" is null
+
+-- DuplicateRepository.getForAutoStack
+select
+  "asset"."id",
+  "asset"."ownerId",
+  "asset"."originalFileName",
+  "asset"."type",
+  "asset"."visibility",
+  "asset"."stackId",
+  "asset_exif"."fileSizeInByte",
+  (
+    select
+      "asset_file"."path"
+    from
+      "asset_file"
+    where
+      "asset_file"."assetId" = "asset"."id"
+      and "asset_file"."type" = 'preview'
+      and "asset_file"."isEdited" = false
+  ) as "previewPath"
+from
+  "asset"
+  left join "asset_exif" on "asset_exif"."assetId" = "asset"."id"
+where
+  "asset"."duplicateId" = $1::uuid
+  and "asset"."type" = $2
+  and "asset"."visibility" in ($3, $4)
+  and "asset"."deletedAt" is null
+  and "asset"."stackId" is null
+
 -- DuplicateRepository.delete
 update "asset"
 set

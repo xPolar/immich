@@ -818,6 +818,8 @@ export enum JobName {
   AssetDetectFaces = 'AssetDetectFaces',
   AssetDetectDuplicatesQueueAll = 'AssetDetectDuplicatesQueueAll',
   AssetDetectDuplicates = 'AssetDetectDuplicates',
+  AssetAutoStackDuplicatesQueueAll = 'AssetAutoStackDuplicatesQueueAll',
+  AssetAutoStackDuplicates = 'AssetAutoStackDuplicates',
   AssetEditThumbnailGeneration = 'AssetEditThumbnailGeneration',
   AssetEncodeVideoQueueAll = 'AssetEncodeVideoQueueAll',
   AssetEncodeVideo = 'AssetEncodeVideo',
@@ -956,6 +958,7 @@ export enum DatabaseLock {
   IntegrityCheck = 67,
   VersionCheck = 800,
   HlsSessionCleanup = 850,
+  AutoStack = 900,
 }
 
 export enum MaintenanceAction {
