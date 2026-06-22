@@ -138,6 +138,21 @@ export class SharedLinkController {
     return this.service.getViewAnalytics(auth, id, dto.period);
   }
 
+  @Get('album/:id/views')
+  @Authenticated({ permission: Permission.SharedLinkRead })
+  @Endpoint({
+    summary: 'Retrieve album shared link view analytics',
+    description: 'Retrieve aggregate private view analytics for all shared links belonging to an owned album.',
+    history: new HistoryBuilder().added('v2.4.0'),
+  })
+  getAlbumSharedLinkViews(
+    @Auth() auth: AuthDto,
+    @Param() { id }: UUIDParamDto,
+    @Query() dto: SharedLinkViewQueryDto,
+  ): Promise<SharedLinkViewResponseDto> {
+    return this.service.getAlbumViewAnalytics(auth, id, dto.period);
+  }
+
   @Get(':id')
   @Authenticated({ permission: Permission.SharedLinkRead })
   @Endpoint({

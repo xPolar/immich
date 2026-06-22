@@ -28,21 +28,43 @@ export class SharedLinkService extends BaseService {
       throw new ForbiddenException();
     }
 
-    const { id, password } = auth.sharedLink;
+    const { id, albumId, password } = auth.sharedLink;
     if (password && !authTokens.includes(this.asToken({ id, password }))) {
       throw new UnauthorizedException('Password required');
     }
 
-    const visitorHash = this.cryptoRepository.hashSha256(`${id}:${visitorId}`);
+    const visitorHash = this.cryptoRepository.hashSha256(`${albumId || id}:${visitorId}`);
     await this.sharedLinkRepository.trackView(id, visitorHash, new Date());
   }
 
   async getViewAnalytics(auth: AuthDto, id: string, period: SharedLinkViewPeriod): Promise<SharedLinkViewResponseDto> {
     await this.findOrFail(auth.user.id, id);
+    return this.getAnalytics(period, (startDate) => this.sharedLinkRepository.getViewAnalytics(id, startDate));
+  }
+
+  async getAlbumViewAnalytics(
+    auth: AuthDto,
+    albumId: string,
+    period: SharedLinkViewPeriod,
+  ): Promise<SharedLinkViewResponseDto> {
+    const owned = await this.accessRepository.album.checkOwnerAccess(auth.user.id, new Set([albumId]));
+    if (!owned.has(albumId)) {
+      throw new ForbiddenException();
+    }
+
+    return this.getAnalytics(period, (startDate) =>
+      this.sharedLinkRepository.getAlbumViewAnalytics(albumId, startDate),
+    );
+  }
+
+  private async getAnalytics(
+    period: SharedLinkViewPeriod,
+    getAnalytics: (startDate?: Date) => Promise<SharedLinkViewResponseDto>,
+  ): Promise<SharedLinkViewResponseDto> {
     const days = period === SharedLinkViewPeriod.Days30 ? 30 : period === SharedLinkViewPeriod.Days90 ? 90 : undefined;
     const startDate = days ? new Date(Date.now() - (days - 1) * 24 * 60 * 60 * 1000) : undefined;
     startDate?.setUTCHours(0, 0, 0, 0);
-    const analytics = await this.sharedLinkRepository.getViewAnalytics(id, startDate);
+    const analytics = await getAnalytics(startDate);
     if (!days || !startDate) {
       return analytics;
     }

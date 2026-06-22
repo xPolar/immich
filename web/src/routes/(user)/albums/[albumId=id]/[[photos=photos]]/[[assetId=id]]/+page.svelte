@@ -2,6 +2,7 @@
   import { goto, invalidate, onNavigate } from '$app/navigation';
   import { scrollMemoryClearer } from '$lib/actions/scroll-memory';
   import AlbumMap from '$lib/components/album-page/AlbumMap.svelte';
+  import AlbumSharedLinkAnalytics from '$lib/components/album-page/AlbumSharedLinkAnalytics.svelte';
   import AlbumSummary from '$lib/components/album-page/AlbumSummary.svelte';
   import ActivityStatus from '$lib/components/asset-viewer/ActivityStatus.svelte';
   import ActivityViewer from '$lib/components/asset-viewer/ActivityViewer.svelte';
@@ -43,6 +44,7 @@
     handleDownloadAlbum,
   } from '$lib/services/album.service';
   import { getGlobalActions } from '$lib/services/app.service';
+  import { shouldShowAlbumSharedLinkAnalytics } from '$lib/services/shared-link.service';
   import { getAssetBulkActions } from '$lib/services/asset.service';
   import { SlideshowNavigation, SlideshowState, slideshowStore } from '$lib/stores/slideshow.store';
   import { handlePromiseError } from '$lib/utils';
@@ -368,6 +370,12 @@
 
               {#if album.assetCount > 0}
                 <AlbumSummary {album} />
+              {/if}
+
+              {#if shouldShowAlbumSharedLinkAnalytics({ isOwned, hasSharedLink: album.hasSharedLink })}
+                <div class="my-3">
+                  <AlbumSharedLinkAnalytics albumId={album.id} />
+                </div>
               {/if}
 
               <!-- ALBUM SHARING -->

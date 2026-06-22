@@ -1,6 +1,11 @@
 <script lang="ts">
   import { handleError } from '$lib/utils/handle-error';
-  import { getSharedLinkViews, type SharedLinkResponseDto, type SharedLinkViewResponseDto } from '@immich/sdk';
+  import {
+    getAlbumSharedLinkViews,
+    getSharedLinkViews,
+    type SharedLinkResponseDto,
+    type SharedLinkViewResponseDto,
+  } from '@immich/sdk';
   import { Button, LoadingSpinner, Modal, ModalBody, Text } from '@immich/ui';
   import { DateTime } from 'luxon';
   import { onMount } from 'svelte';
@@ -11,11 +16,11 @@
   type Period = '30d' | '90d' | 'all';
 
   type Props = {
-    sharedLink: SharedLinkResponseDto;
+    target: { type: 'sharedLink'; sharedLink: SharedLinkResponseDto } | { type: 'album'; albumId: string };
     onClose: () => void;
   };
 
-  const { sharedLink, onClose }: Props = $props();
+  const { target, onClose }: Props = $props();
 
   let period: Period = $state('30d');
   let analytics: SharedLinkViewResponseDto | undefined = $state();
@@ -65,7 +70,10 @@
     loading = true;
 
     try {
-      const response = await getSharedLinkViews({ id: sharedLink.id, period });
+      const response =
+        target.type === 'album'
+          ? await getAlbumSharedLinkViews({ id: target.albumId, period })
+          : await getSharedLinkViews({ id: target.sharedLink.id, period });
       if (generation !== requestGeneration) {
         return;
       }
@@ -102,7 +110,11 @@
   });
 </script>
 
-<Modal title={$t('shared_link_analytics')} {onClose} size="medium">
+<Modal
+  title={$t(target.type === 'album' ? 'album_public_link_analytics' : 'shared_link_analytics')}
+  {onClose}
+  size="medium"
+>
   <ModalBody>
     <div class="flex flex-col gap-6">
       <div class="flex gap-2">

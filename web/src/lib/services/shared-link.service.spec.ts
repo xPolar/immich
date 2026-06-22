@@ -1,6 +1,11 @@
 import type { ServerConfigDto } from '@immich/sdk';
 import type { MessageFormatter } from 'svelte-i18n';
-import { asUrl, getSharedLinkActions, shouldTrackSharedLinkView } from '$lib/services/shared-link.service';
+import {
+  asUrl,
+  getSharedLinkActions,
+  shouldShowAlbumSharedLinkAnalytics,
+  shouldTrackSharedLinkView,
+} from '$lib/services/shared-link.service';
 import { sharedLinkFactory } from '@test-data/factories/shared-link-factory';
 
 vi.mock(import('$lib/managers/server-config-manager.svelte'), () => ({
@@ -45,5 +50,13 @@ describe('SharedLinkService', () => {
 
     expect(Analytics.title).toBe('analytics');
     expect(Analytics.onAction).toBeTypeOf('function');
+  });
+
+  describe('shouldShowAlbumSharedLinkAnalytics', () => {
+    it('should only show analytics for an owned album with a shared link', () => {
+      expect(shouldShowAlbumSharedLinkAnalytics({ isOwned: true, hasSharedLink: true })).toBe(true);
+      expect(shouldShowAlbumSharedLinkAnalytics({ isOwned: false, hasSharedLink: true })).toBe(false);
+      expect(shouldShowAlbumSharedLinkAnalytics({ isOwned: true, hasSharedLink: false })).toBe(false);
+    });
   });
 });

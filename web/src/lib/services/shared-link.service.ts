@@ -35,7 +35,7 @@ export const getSharedLinkActions = ($t: MessageFormatter, sharedLink: SharedLin
   const Analytics: ActionItem = {
     title: $t('analytics'),
     icon: mdiChartLine,
-    onAction: () => modalManager.show(SharedLinkAnalyticsModal, { sharedLink }),
+    onAction: () => modalManager.show(SharedLinkAnalyticsModal, { target: { type: 'sharedLink', sharedLink } }),
   };
 
   const Edit: ActionItem = {
@@ -84,6 +84,14 @@ export const shouldTrackSharedLinkView = ({
   ownerId: string;
   passwordRequired: boolean;
 }) => !passwordRequired && (!authenticated || userId !== ownerId);
+
+export const shouldShowAlbumSharedLinkAnalytics = ({
+  isOwned,
+  hasSharedLink,
+}: {
+  isOwned: boolean;
+  hasSharedLink: boolean;
+}) => isOwned && hasSharedLink;
 
 export const handleCreateSharedLink = async (dto: SharedLinkCreateDto) => {
   const $t = await getFormatter();

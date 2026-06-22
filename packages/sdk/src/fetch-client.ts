@@ -2221,6 +2221,15 @@ export type SharedLinkCreateDto = {
     slug?: string | null;
     "type": SharedLinkType;
 };
+export type SharedLinkViewResponseDto = {
+    daily: {
+        date: string;
+        uniqueBrowsers: number;
+        views: number;
+    }[];
+    totalViews: number;
+    uniqueBrowsers: number;
+};
 export type SharedLinkLoginDto = {
     /** Shared link password */
     password: string;
@@ -2251,15 +2260,6 @@ export type AssetIdsResponseDto = {
     error?: AssetIdErrorReason;
     /** Whether operation succeeded */
     success: boolean;
-};
-export type SharedLinkViewResponseDto = {
-    daily: {
-        date: string;
-        uniqueBrowsers: number;
-        views: number;
-    }[];
-    totalViews: number;
-    uniqueBrowsers: number;
 };
 export type StackResponseDto = {
     assets: AssetResponseDto[];
@@ -6153,6 +6153,22 @@ export function createSharedLink({ sharedLinkCreateDto }: {
         method: "POST",
         body: sharedLinkCreateDto
     })));
+}
+/**
+ * Retrieve album shared link view analytics
+ */
+export function getAlbumSharedLinkViews({ id, period }: {
+    id: string;
+    period?: "30d" | "90d" | "all";
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: SharedLinkViewResponseDto;
+    }>(`/shared-links/album/${encodeURIComponent(id)}/views${QS.query(QS.explode({
+        period
+    }))}`, {
+        ...opts
+    }));
 }
 /**
  * Shared link login

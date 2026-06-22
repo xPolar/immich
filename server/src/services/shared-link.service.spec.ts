@@ -62,6 +62,33 @@ describe(SharedLinkService.name, () => {
       expect(mocks.sharedLink.trackView.mock.calls[0][1]).not.toEqual(mocks.sharedLink.trackView.mock.calls[1][1]);
     });
 
+    it('should scope the same visitor ID to the album across album links', async () => {
+      mocks.crypto.hashSha256.mockImplementation((value) => Buffer.from(value));
+      mocks.sharedLink.trackView.mockResolvedValue([]);
+
+      await sut.trackView(
+        factory.auth({ sharedLink: { id: 'link-1', albumId: 'album-1', password: null } }),
+        [],
+        'visitor-id',
+      );
+      await sut.trackView(
+        factory.auth({ sharedLink: { id: 'link-2', albumId: 'album-1', password: null } }),
+        [],
+        'visitor-id',
+      );
+      await sut.trackView(
+        factory.auth({ sharedLink: { id: 'link-3', albumId: 'album-2', password: null } }),
+        [],
+        'visitor-id',
+      );
+
+      expect(mocks.crypto.hashSha256).toHaveBeenNthCalledWith(1, 'album-1:visitor-id');
+      expect(mocks.crypto.hashSha256).toHaveBeenNthCalledWith(2, 'album-1:visitor-id');
+      expect(mocks.crypto.hashSha256).toHaveBeenNthCalledWith(3, 'album-2:visitor-id');
+      expect(mocks.sharedLink.trackView.mock.calls[0][1]).toEqual(mocks.sharedLink.trackView.mock.calls[1][1]);
+      expect(mocks.sharedLink.trackView.mock.calls[0][1]).not.toEqual(mocks.sharedLink.trackView.mock.calls[2][1]);
+    });
+
     it('should reject a password protected link before login', async () => {
       const auth = factory.auth({ sharedLink: { id: 'link-id', password: 'password' } });
       mocks.crypto.hashSha256.mockReturnValue(Buffer.from('login-token'));
@@ -97,6 +124,32 @@ describe(SharedLinkService.name, () => {
       ).rejects.toBeInstanceOf(BadRequestException);
 
       expect(mocks.sharedLink.getViewAnalytics).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getAlbumViewAnalytics', () => {
+    it('should return aggregate analytics for an album owner', async () => {
+      mocks.access.album.checkOwnerAccess.mockResolvedValue(new Set(['album-id']));
+      mocks.sharedLink.getAlbumViewAnalytics.mockResolvedValue({
+        totalViews: 5,
+        uniqueBrowsers: 2,
+        daily: [],
+      });
+
+      const result = await sut.getAlbumViewAnalytics(authStub.user1, 'album-id', SharedLinkViewPeriod.All);
+
+      expect(mocks.access.album.checkOwnerAccess).toHaveBeenCalledWith(authStub.user1.user.id, new Set(['album-id']));
+      expect(result).toEqual({ totalViews: 5, uniqueBrowsers: 2, daily: [] });
+    });
+
+    it('should reject album analytics for an editor or viewer', async () => {
+      mocks.access.album.checkOwnerAccess.mockResolvedValue(new Set());
+
+      await expect(
+        sut.getAlbumViewAnalytics(authStub.user1, 'album-id', SharedLinkViewPeriod.All),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+
+      expect(mocks.sharedLink.getAlbumViewAnalytics).not.toHaveBeenCalled();
     });
   });
 
