@@ -12,12 +12,13 @@
   import { locale } from '$lib/stores/preferences.store';
   import { handleError } from '$lib/utils/handle-error';
   import type { AssetResponseDto } from '@immich/sdk';
-  import { createStack, deleteDuplicates, resolveDuplicates, updateAssets } from '@immich/sdk';
+  import { createStack, deleteDuplicates, resolveDuplicates, stackDuplicates, updateAssets } from '@immich/sdk';
   import { Button, HStack, IconButton, modalManager, Text, toastManager } from '@immich/ui';
   import {
     mdiCheckOutline,
     mdiChevronLeft,
     mdiChevronRight,
+    mdiImageMultipleOutline,
     mdiKeyboard,
     mdiPageFirst,
     mdiPageLast,
@@ -198,6 +199,31 @@
     );
   };
 
+  const handleStackAll = async () => {
+    const ids = duplicates.map(({ duplicateId }) => duplicateId);
+    return withConfirmation(
+      async () => {
+        const response = await stackDuplicates({ bulkIdsDto: { ids } });
+        const stackedIds = new Set(response.filter(({ success }) => success).map(({ id }) => id));
+        const failedCount = ids.length - stackedIds.size;
+
+        duplicates = duplicates.filter(({ duplicateId }) => !stackedIds.has(duplicateId));
+
+        if (stackedIds.size > 0) {
+          toastManager.primary($t('stacked_duplicate_groups_count', { values: { count: stackedIds.size } }));
+        }
+        if (failedCount > 0) {
+          toastManager.danger($t('errors.failed_to_stack_assets'));
+        }
+
+        page.url.searchParams.delete('index');
+        await goto(Route.duplicatesUtility());
+      },
+      $t('bulk_stack_duplicates_confirmation', { values: { count: ids.length } }),
+      $t('confirm'),
+    );
+  };
+
   const handleFirst = () => navigateToIndex(0);
   const handlePrevious = () => navigateToIndex(Math.max(duplicatesIndex - 1, 0));
   const handleNext = async () => navigateToIndex(Math.min(duplicatesIndex + 1, duplicates.length - 1));
@@ -238,6 +264,16 @@
         color="secondary"
       >
         <Text class="hidden md:block">{$t('keep_all')}</Text>
+      </Button>
+      <Button
+        leadingIcon={mdiImageMultipleOutline}
+        onclick={() => handleStackAll()}
+        disabled={!hasDuplicates}
+        size="small"
+        variant="ghost"
+        color="secondary"
+      >
+        <Text class="hidden md:block">{$t('stack_all')}</Text>
       </Button>
       <IconButton
         shape="round"

@@ -221,6 +221,48 @@ export class DuplicateService extends BaseService {
     return results;
   }
 
+  async stack(auth: AuthDto, dto: BulkIdsDto) {
+    await this.requireAccess({ auth, permission: Permission.DuplicateDelete, ids: dto.ids });
+
+    const results: BulkIdResponseDto[] = [];
+
+    for (const duplicateId of dto.ids) {
+      try {
+        results.push(await this.stackGroup(auth, duplicateId));
+      } catch (error: Error | any) {
+        this.logger.error(`Error stacking duplicate group ${duplicateId}: ${error}`, error?.stack);
+        results.push({ id: duplicateId, success: false, error: BulkIdErrorReason.UNKNOWN });
+      }
+    }
+
+    return results;
+  }
+
+  private async stackGroup(auth: AuthDto, duplicateId: string): Promise<BulkIdResponseDto> {
+    const duplicateGroup = await this.duplicateRepository.get(duplicateId);
+    if (!duplicateGroup || duplicateGroup.assets.length < 2) {
+      return { id: duplicateId, success: false, error: BulkIdErrorReason.NOT_FOUND };
+    }
+
+    const assets = duplicateGroup.assets.map((asset) => mapAsset(asset, { auth }));
+    const primaryAssetId = suggestDuplicateKeepAssetIds(assets)[0];
+    const assetIds = [primaryAssetId, ...assets.map(({ id }) => id).filter((id) => id !== primaryAssetId)];
+    const allowedAssetIds = await this.checkAccess({ auth, permission: Permission.AssetUpdate, ids: assetIds });
+    if (allowedAssetIds.size !== assetIds.length) {
+      return {
+        id: duplicateId,
+        success: false,
+        error: BulkIdErrorReason.NO_PERMISSION,
+        errorMessage: 'No permission to stack assets',
+      };
+    }
+
+    const stack = await this.stackRepository.create({ ownerId: auth.user.id }, assetIds, { clearDuplicateId: true });
+    await this.eventRepository.emit('StackCreate', { stackId: stack.id, userId: auth.user.id });
+
+    return { id: duplicateId, success: true };
+  }
+
   private async resolveGroup(auth: AuthDto, group: DuplicateResolveGroupDto): Promise<BulkIdResponseDto> {
     const { duplicateId, keepAssetIds, trashAssetIds } = group;
 

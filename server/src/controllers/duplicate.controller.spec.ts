@@ -44,4 +44,11 @@ describe(DuplicateController.name, () => {
       expect(body).toEqual(factory.responses.validationError([{ path: ['id'], message: 'Invalid UUID' }]));
     });
   });
+
+  describe('POST /duplicates/stack', () => {
+    it('should be an authenticated route', async () => {
+      await request(ctx.getHttpServer()).post('/duplicates/stack');
+      expect(ctx.authenticate).toHaveBeenCalled();
+    });
+  });
 });
