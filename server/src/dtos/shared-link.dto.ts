@@ -51,6 +51,32 @@ const SharedLinkLoginSchema = z
   })
   .meta({ id: 'SharedLinkLoginDto' });
 
+export enum SharedLinkViewPeriod {
+  Days30 = '30d',
+  Days90 = '90d',
+  All = 'all',
+}
+
+const SharedLinkViewQuerySchema = z
+  .object({
+    period: z.enum(SharedLinkViewPeriod).default(SharedLinkViewPeriod.Days30),
+  })
+  .meta({ id: 'SharedLinkViewQueryDto' });
+
+const SharedLinkViewResponseSchema = z
+  .object({
+    totalViews: z.number(),
+    uniqueBrowsers: z.number(),
+    daily: z.array(
+      z.object({
+        date: z.string(),
+        views: z.number(),
+        uniqueBrowsers: z.number(),
+      }),
+    ),
+  })
+  .meta({ id: 'SharedLinkViewResponseDto' });
+
 const SharedLinkResponseSchema = z
   .object({
     id: z.uuidv4().describe('Shared link ID'),
@@ -75,6 +101,8 @@ export class SharedLinkSearchDto extends createZodDto(SharedLinkSearchSchema) {}
 export class SharedLinkCreateDto extends createZodDto(SharedLinkCreateSchema) {}
 export class SharedLinkEditDto extends createZodDto(SharedLinkEditSchema) {}
 export class SharedLinkLoginDto extends createZodDto(SharedLinkLoginSchema) {}
+export class SharedLinkViewQueryDto extends createZodDto(SharedLinkViewQuerySchema) {}
+export class SharedLinkViewResponseDto extends createZodDto(SharedLinkViewResponseSchema) {}
 export class SharedLinkResponseDto extends createZodDto(SharedLinkResponseSchema) {}
 
 export function mapSharedLink(sharedLink: SharedLink, options: { stripAssetMetadata: boolean }): SharedLinkResponseDto {

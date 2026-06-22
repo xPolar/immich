@@ -28,6 +28,39 @@ beforeAll(async () => {
 });
 
 describe(SharedLinkService.name, () => {
+  describe('view analytics', () => {
+    it('should atomically aggregate daily views and cascade them with the shared link', async () => {
+      const { ctx } = setup();
+      const { user } = await ctx.newUser();
+      const sharedLinkRepo = ctx.get(SharedLinkRepository);
+      const sharedLink = await sharedLinkRepo.create({
+        key: randomBytes(16),
+        id: factory.uuid(),
+        userId: user.id,
+        allowUpload: false,
+        type: SharedLinkType.Individual,
+      });
+      const visitorHash = randomBytes(32);
+
+      await Promise.all(
+        Array.from({ length: 5 }, () => sharedLinkRepo.trackView(sharedLink.id, visitorHash, new Date())),
+      );
+
+      await expect(sharedLinkRepo.getViewAnalytics(sharedLink.id)).resolves.toMatchObject({
+        totalViews: 5,
+        uniqueBrowsers: 1,
+        daily: [expect.objectContaining({ views: 5, uniqueBrowsers: 1 })],
+      });
+
+      await sharedLinkRepo.remove(sharedLink.id);
+      await expect(sharedLinkRepo.getViewAnalytics(sharedLink.id)).resolves.toMatchObject({
+        totalViews: 0,
+        uniqueBrowsers: 0,
+        daily: [],
+      });
+    });
+  });
+
   describe('get', () => {
     it('should return the correct dates on the shared link album', async () => {
       const { sut, ctx } = setup();

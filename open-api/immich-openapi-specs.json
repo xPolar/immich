@@ -12324,6 +12324,56 @@
         "x-immich-state": "Stable"
       }
     },
+    "/shared-links/views": {
+      "post": {
+        "description": "Record a successful browser render for the current shared link.",
+        "operationId": "trackSharedLinkView",
+        "parameters": [
+          {
+            "name": "key",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "slug",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Record a shared link view",
+        "tags": [
+          "Shared links"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v2.4.0",
+            "state": "Added"
+          }
+        ]
+      }
+    },
     "/shared-links/{id}": {
       "delete": {
         "description": "Delete a specific shared link by its ID.",
@@ -12650,6 +12700,72 @@
         ],
         "x-immich-permission": "sharedLink.update",
         "x-immich-state": "Stable"
+      }
+    },
+    "/shared-links/{id}/views": {
+      "get": {
+        "description": "Retrieve private view analytics for a shared link owned by the current user.",
+        "operationId": "getSharedLinkViews",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "period",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "30d",
+              "type": "string",
+              "enum": [
+                "30d",
+                "90d",
+                "all"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedLinkViewResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Retrieve shared link view analytics",
+        "tags": [
+          "Shared links"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v2.4.0",
+            "state": "Added"
+          }
+        ],
+        "x-immich-permission": "sharedLink.read"
       }
     },
     "/stacks": {
@@ -23191,6 +23307,44 @@
           "INDIVIDUAL"
         ],
         "type": "string"
+      },
+      "SharedLinkViewResponseDto": {
+        "properties": {
+          "daily": {
+            "items": {
+              "properties": {
+                "date": {
+                  "type": "string"
+                },
+                "uniqueBrowsers": {
+                  "type": "number"
+                },
+                "views": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "date",
+                "views",
+                "uniqueBrowsers"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "totalViews": {
+            "type": "number"
+          },
+          "uniqueBrowsers": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "daily",
+          "totalViews",
+          "uniqueBrowsers"
+        ],
+        "type": "object"
       },
       "SharedLinksResponse": {
         "properties": {

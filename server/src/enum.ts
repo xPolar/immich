@@ -12,6 +12,7 @@ export enum ImmichCookie {
   AuthType = 'immich_auth_type',
   IsAuthenticated = 'immich_is_authenticated',
   SharedLinkToken = 'immich_shared_link_token',
+  SharedLinkVisitor = 'immich_shared_link_visitor',
   OAuthState = 'immich_oauth_state',
   OAuthCodeVerifier = 'immich_oauth_code_verifier',
 }

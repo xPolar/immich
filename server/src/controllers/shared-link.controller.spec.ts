@@ -44,4 +44,28 @@ describe(SharedLinkController.name, () => {
       );
     });
   });
+
+  describe('POST /shared-links/views', () => {
+    it('should require shared link authentication', async () => {
+      await request(ctx.getHttpServer()).post('/shared-links/views');
+
+      expect(ctx.authenticate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: expect.objectContaining({ sharedLinkRoute: true }),
+        }),
+      );
+    });
+  });
+
+  describe('GET /shared-links/:id/views', () => {
+    it('should require shared link read permission', async () => {
+      await request(ctx.getHttpServer()).get(`/shared-links/${factory.uuid()}/views`);
+
+      expect(ctx.authenticate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: expect.objectContaining({ permission: Permission.SharedLinkRead, sharedLinkRoute: false }),
+        }),
+      );
+    });
+  });
 });

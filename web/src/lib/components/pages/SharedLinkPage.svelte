@@ -5,10 +5,17 @@
   import ThemeButton from '$lib/components/shared-components/ThemeButton.svelte';
   import { assetViewerManager } from '$lib/managers/asset-viewer-manager.svelte';
   import { authManager } from '$lib/managers/auth-manager.svelte';
+  import { shouldTrackSharedLinkView } from '$lib/services/shared-link.service';
   import { setSharedLink } from '$lib/utils';
   import { handleError } from '$lib/utils/handle-error';
   import { navigate } from '$lib/utils/navigation';
-  import { sharedLinkLogin, SharedLinkType, type AssetResponseDto, type SharedLinkResponseDto } from '@immich/sdk';
+  import {
+    sharedLinkLogin,
+    SharedLinkType,
+    trackSharedLinkView,
+    type AssetResponseDto,
+    type SharedLinkResponseDto,
+  } from '@immich/sdk';
   import { Button, Logo, PasswordInput } from '@immich/ui';
   import { onDestroy, tick } from 'svelte';
   import { t } from 'svelte-i18n';
@@ -35,21 +42,49 @@
   let { title, description } = $state(meta);
   let isOwned = $derived(authManager.authenticated && authManager.user.id === sharedLink?.userId);
   let password = $state('');
+  let viewTracked = false;
+  const shouldTrack = () =>
+    !!sharedLink &&
+    shouldTrackSharedLinkView({
+      authenticated: authManager.authenticated,
+      userId: authManager.authenticated ? authManager.user.id : undefined,
+      ownerId: sharedLink.userId,
+      passwordRequired: !!passwordRequired,
+    });
 
   if (passwordRequired) {
     assetViewerManager.showAssetViewer(false);
   }
 
+  $effect(() => {
+    if (!viewTracked && shouldTrack()) {
+      viewTracked = true;
+      tick()
+        .then(() => trackSharedLinkView({ key, slug }))
+        .catch(() => {});
+    }
+  });
+
   const handlePasswordSubmit = async () => {
     try {
       sharedLink = await sharedLinkLogin({ key, slug, sharedLinkLoginDto: { password } });
       setSharedLink(sharedLink);
+      const shouldTrackView = shouldTrackSharedLinkView({
+        authenticated: authManager.authenticated,
+        userId: authManager.authenticated ? authManager.user.id : undefined,
+        ownerId: sharedLink.userId,
+        passwordRequired: false,
+      });
+      viewTracked = shouldTrackView;
       passwordRequired = false;
       title = (sharedLink.album ? sharedLink.album.albumName : $t('public_share')) + ' - Immich';
       description =
         sharedLink.description ||
         $t('shared_photos_and_videos_count', { values: { assetCount: sharedLink.assets.length } });
       await tick();
+      if (shouldTrackView) {
+        await trackSharedLinkView({ key, slug }).catch(() => {});
+      }
       await navigate(
         { targetRoute: 'current', assetId: null, assetGridRouteSearchParams: assetViewerManager.gridScrollTarget },
         { forceNavigate: true, replaceState: true },

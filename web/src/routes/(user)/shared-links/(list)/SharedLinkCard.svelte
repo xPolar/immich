@@ -30,7 +30,7 @@
     }
   };
 
-  const { Edit, Copy, Delete } = $derived(getSharedLinkActions($t, sharedLink));
+  const { Analytics, Edit, Copy, Delete } = $derived(getSharedLinkActions($t, sharedLink));
 
   const capabilities = $derived.by(() => {
     const items = [];
@@ -104,6 +104,7 @@
   </svelte:element>
   <div class="ms-4 flex flex-auto flex-col place-content-center place-items-end text-end">
     <div class="hidden sm:flex">
+      <ActionButton action={Analytics} />
       <ActionButton action={Edit} />
       <ActionButton action={Copy} />
       <ActionButton action={Delete} />
@@ -113,7 +114,7 @@
       <ContextMenuButton
         aria-label={$t('shared_link_options')}
         position="top-right"
-        items={[Edit, Copy, MenuItemType.Divider, Delete]}
+        items={[Analytics, Edit, Copy, MenuItemType.Divider, Delete]}
       />
     </div>
   </div>

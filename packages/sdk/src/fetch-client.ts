@@ -2252,6 +2252,15 @@ export type AssetIdsResponseDto = {
     /** Whether operation succeeded */
     success: boolean;
 };
+export type SharedLinkViewResponseDto = {
+    daily: {
+        date: string;
+        uniqueBrowsers: number;
+        views: number;
+    }[];
+    totalViews: number;
+    uniqueBrowsers: number;
+};
 export type StackResponseDto = {
     assets: AssetResponseDto[];
     /** Stack ID */
@@ -6183,6 +6192,21 @@ export function getMySharedLink({ key, slug }: {
     }));
 }
 /**
+ * Record a shared link view
+ */
+export function trackSharedLinkView({ key, slug }: {
+    key?: string;
+    slug?: string;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchText(`/shared-links/views${QS.query(QS.explode({
+        key,
+        slug
+    }))}`, {
+        ...opts,
+        method: "POST"
+    }));
+}
+/**
  * Delete a shared link
  */
 export function removeSharedLink({ id }: {
@@ -6253,6 +6277,22 @@ export function addSharedLinkAssets({ id, assetIdsDto }: {
         method: "PUT",
         body: assetIdsDto
     })));
+}
+/**
+ * Retrieve shared link view analytics
+ */
+export function getSharedLinkViews({ id, period }: {
+    id: string;
+    period?: "30d" | "90d" | "all";
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: SharedLinkViewResponseDto;
+    }>(`/shared-links/${encodeURIComponent(id)}/views${QS.query(QS.explode({
+        period
+    }))}`, {
+        ...opts
+    }));
 }
 /**
  * Delete stacks

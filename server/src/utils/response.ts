@@ -21,6 +21,7 @@ export const respondWithCookie = <T>(res: Response, body: T, { isSecure, values 
     // no httpOnly so that the client can know the auth state
     [ImmichCookie.IsAuthenticated]: { ...defaults, httpOnly: false },
     [ImmichCookie.SharedLinkToken]: { ...defaults, maxAge: Duration.fromObject({ days: 1 }).toMillis() },
+    [ImmichCookie.SharedLinkVisitor]: defaults,
   };
 
   for (const { key, value } of values) {

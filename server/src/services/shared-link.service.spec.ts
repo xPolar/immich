@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { AssetIdErrorReason } from 'src/dtos/asset-ids.response.dto';
-import { mapSharedLink } from 'src/dtos/shared-link.dto';
+import { mapSharedLink, SharedLinkViewPeriod } from 'src/dtos/shared-link.dto';
 import { SharedLinkType } from 'src/enum';
 import { SharedLinkService } from 'src/services/shared-link.service';
 import { AlbumFactory } from 'test/factories/album.factory';
@@ -34,6 +34,69 @@ describe(SharedLinkService.name, () => {
         ),
       );
       expect(mocks.sharedLink.getAll).toHaveBeenCalledWith({ userId: authStub.user1.user.id });
+    });
+  });
+
+  describe('trackView', () => {
+    it('should hash the visitor ID and atomically track the current shared link', async () => {
+      const auth = factory.auth({ sharedLink: { id: 'link-id', password: null } });
+      const hash = Buffer.from('visitor-hash');
+      mocks.crypto.hashSha256.mockReturnValue(hash);
+      mocks.sharedLink.trackView.mockResolvedValue([]);
+
+      await sut.trackView(auth, [], 'visitor-id');
+
+      expect(mocks.crypto.hashSha256).toHaveBeenCalledWith('link-id:visitor-id');
+      expect(mocks.sharedLink.trackView).toHaveBeenCalledWith('link-id', hash, expect.any(Date));
+    });
+
+    it('should scope the same visitor ID to each shared link', async () => {
+      mocks.crypto.hashSha256.mockImplementation((value) => Buffer.from(value));
+      mocks.sharedLink.trackView.mockResolvedValue([]);
+
+      await sut.trackView(factory.auth({ sharedLink: { id: 'link-1', password: null } }), [], 'visitor-id');
+      await sut.trackView(factory.auth({ sharedLink: { id: 'link-2', password: null } }), [], 'visitor-id');
+
+      expect(mocks.crypto.hashSha256).toHaveBeenNthCalledWith(1, 'link-1:visitor-id');
+      expect(mocks.crypto.hashSha256).toHaveBeenNthCalledWith(2, 'link-2:visitor-id');
+      expect(mocks.sharedLink.trackView.mock.calls[0][1]).not.toEqual(mocks.sharedLink.trackView.mock.calls[1][1]);
+    });
+
+    it('should reject a password protected link before login', async () => {
+      const auth = factory.auth({ sharedLink: { id: 'link-id', password: 'password' } });
+      mocks.crypto.hashSha256.mockReturnValue(Buffer.from('login-token'));
+
+      await expect(sut.trackView(auth, [], 'visitor-id')).rejects.toBeInstanceOf(UnauthorizedException);
+
+      expect(mocks.sharedLink.trackView).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getViewAnalytics', () => {
+    it('should enforce ownership and fill empty dates for a bounded range', async () => {
+      const sharedLink = SharedLinkFactory.create();
+      mocks.sharedLink.get.mockResolvedValue(getForSharedLink(sharedLink));
+      mocks.sharedLink.getViewAnalytics.mockResolvedValue({
+        totalViews: 2,
+        uniqueBrowsers: 1,
+        daily: [],
+      });
+
+      const result = await sut.getViewAnalytics(authStub.user1, sharedLink.id, SharedLinkViewPeriod.Days30);
+
+      expect(mocks.sharedLink.get).toHaveBeenCalledWith(authStub.user1.user.id, sharedLink.id);
+      expect(result.daily).toHaveLength(30);
+      expect(result.daily.every(({ views, uniqueBrowsers }) => views === 0 && uniqueBrowsers === 0)).toBe(true);
+    });
+
+    it('should reject analytics for a link not owned by the current user', async () => {
+      mocks.sharedLink.get.mockResolvedValue(void 0);
+
+      await expect(
+        sut.getViewAnalytics(authStub.user1, factory.uuid(), SharedLinkViewPeriod.All),
+      ).rejects.toBeInstanceOf(BadRequestException);
+
+      expect(mocks.sharedLink.getViewAnalytics).not.toHaveBeenCalled();
     });
   });
 
