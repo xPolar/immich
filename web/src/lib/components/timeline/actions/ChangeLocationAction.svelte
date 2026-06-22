@@ -21,12 +21,13 @@
   let { menuItem = false, assetInteraction = assetMultiSelectManager }: Props = $props();
 
   const onAction = async () => {
+    const assets = assetInteraction.assets;
     const point = await modalManager.show(GeolocationPointPickerModal, {});
     if (!point) {
       return;
     }
 
-    const ids = getOwnedAssetsWithWarning(assetInteraction.assets, authManager.user);
+    const ids = getOwnedAssetsWithWarning(assets, authManager.user);
 
     try {
       await updateAssets({ assetBulkUpdateDto: { ids, latitude: point.lat, longitude: point.lng } });

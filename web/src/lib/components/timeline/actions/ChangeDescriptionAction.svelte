@@ -21,9 +21,10 @@
   let { menuItem = false, assetInteraction = assetMultiSelectManager }: Props = $props();
 
   const handleUpdateDescription = async () => {
+    const assets = assetInteraction.assets;
     const description = await modalManager.show(AssetUpdateDescriptionConfirmModal);
     if (description) {
-      const ids = getOwnedAssetsWithWarning(assetInteraction.assets, authManager.user);
+      const ids = getOwnedAssetsWithWarning(assets, authManager.user);
 
       try {
         await updateAssets({ assetBulkUpdateDto: { ids, description } });
