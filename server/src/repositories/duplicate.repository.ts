@@ -10,6 +10,7 @@ import { probes } from 'src/repositories/database.repository';
 import { DB } from 'src/schema';
 import { AssetExifTable } from 'src/schema/tables/asset-exif.table';
 import { anyUuid, asUuid, withDefaultVisibility, withFilePath } from 'src/utils/database';
+import { mimeTypes } from 'src/utils/mime-types';
 
 // Maximum number of candidate duplicates to return from vector search
 const DUPLICATE_SEARCH_LIMIT = 64;
@@ -27,6 +28,19 @@ interface DuplicateMergeOptions {
   assetIds: string[];
   sourceIds: string[];
 }
+
+interface AutoStackSearch {
+  assetId: string;
+  ownerId: string;
+  duplicateId: string | null;
+  localDateTime: Date;
+  dateTimeOriginal: Date | null;
+}
+
+const autoStackExtensions = ['.jpg', '.jpeg', '.jpe', '.png', ...Object.keys(mimeTypes.raw)];
+const isAutoStackFormat = sql<boolean>`lower(asset."originalFileName") like any(array[${sql.join(
+  autoStackExtensions.map((extension) => sql.lit(`%${extension}`)),
+)}]::text[])`;
 
 @Injectable()
 export class DuplicateRepository {
@@ -158,19 +172,26 @@ export class DuplicateRepository {
   streamForAutoStack() {
     return this.db
       .selectFrom('asset')
-      .select('asset.duplicateId as id')
-      .distinct()
-      .where('asset.duplicateId', 'is not', null)
-      .$narrowType<{ id: NotNull }>()
+      .select('asset.id')
       .where('asset.type', '=', AssetType.Image)
       .where('asset.visibility', 'in', [AssetVisibility.Archive, AssetVisibility.Timeline])
       .where('asset.deletedAt', 'is', null)
       .where('asset.stackId', 'is', null)
+      .where(isAutoStackFormat)
+      .where((eb) =>
+        eb.exists(
+          eb
+            .selectFrom('asset_file')
+            .whereRef('asset_file.assetId', '=', 'asset.id')
+            .where('asset_file.type', '=', AssetFileType.Preview)
+            .where('asset_file.isEdited', '=', false),
+        ),
+      )
       .stream();
   }
 
   @GenerateSql({ params: [DummyValue.UUID] })
-  getForAutoStack(duplicateId: string) {
+  getAutoStackSeed(assetId: string) {
     return this.db
       .selectFrom('asset')
       .leftJoin('asset_exif', 'asset_exif.assetId', 'asset.id')
@@ -181,14 +202,81 @@ export class DuplicateRepository {
         'asset.type',
         'asset.visibility',
         'asset.stackId',
+        'asset.duplicateId',
+        'asset.localDateTime',
         'asset_exif.fileSizeInByte',
+        'asset_exif.dateTimeOriginal',
+        'asset_exif.make',
+        'asset_exif.model',
+        'asset_exif.lensModel',
       ])
       .select((eb) => withFilePath(eb, AssetFileType.Preview).as('previewPath'))
-      .where('asset.duplicateId', '=', asUuid(duplicateId))
+      .where('asset.id', '=', asUuid(assetId))
       .where('asset.type', '=', AssetType.Image)
       .where('asset.visibility', 'in', [AssetVisibility.Archive, AssetVisibility.Timeline])
       .where('asset.deletedAt', 'is', null)
       .where('asset.stackId', 'is', null)
+      .executeTakeFirst();
+  }
+
+  @GenerateSql({
+    params: [
+      {
+        assetId: DummyValue.UUID,
+        ownerId: DummyValue.UUID,
+        duplicateId: DummyValue.UUID,
+        localDateTime: DummyValue.DATE,
+        dateTimeOriginal: DummyValue.DATE,
+      },
+    ],
+  })
+  getAutoStackCandidates(search: AutoStackSearch) {
+    return this.db
+      .selectFrom('asset')
+      .leftJoin('asset_exif', 'asset_exif.assetId', 'asset.id')
+      .select([
+        'asset.id',
+        'asset.ownerId',
+        'asset.originalFileName',
+        'asset.type',
+        'asset.visibility',
+        'asset.stackId',
+        'asset.duplicateId',
+        'asset.localDateTime',
+        'asset_exif.fileSizeInByte',
+        'asset_exif.dateTimeOriginal',
+        'asset_exif.make',
+        'asset_exif.model',
+        'asset_exif.lensModel',
+      ])
+      .select((eb) => withFilePath(eb, AssetFileType.Preview).as('previewPath'))
+      .where('asset.id', '!=', asUuid(search.assetId))
+      .where('asset.ownerId', '=', asUuid(search.ownerId))
+      .where('asset.type', '=', AssetType.Image)
+      .where('asset.visibility', 'in', [AssetVisibility.Archive, AssetVisibility.Timeline])
+      .where('asset.deletedAt', 'is', null)
+      .where('asset.stackId', 'is', null)
+      .where(isAutoStackFormat)
+      .where((eb) =>
+        eb.exists(
+          eb
+            .selectFrom('asset_file')
+            .whereRef('asset_file.assetId', '=', 'asset.id')
+            .where('asset_file.type', '=', AssetFileType.Preview)
+            .where('asset_file.isEdited', '=', false),
+        ),
+      )
+      .where((eb) =>
+        eb.or([
+          ...(search.duplicateId ? [eb('asset.duplicateId', '=', asUuid(search.duplicateId))] : []),
+          sql<boolean>`abs(extract(epoch from (asset."localDateTime" - ${search.localDateTime}))) <= 1`,
+          ...(search.dateTimeOriginal
+            ? [
+                sql<boolean>`asset_exif."dateTimeOriginal" is not null and abs(extract(epoch from (asset_exif."dateTimeOriginal" - ${search.dateTimeOriginal}))) <= 1`,
+              ]
+            : []),
+        ]),
+      )
       .execute();
   }
 

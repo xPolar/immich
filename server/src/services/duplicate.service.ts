@@ -6,7 +6,16 @@ import { BulkIdErrorReason, BulkIdResponseDto, BulkIdsDto } from 'src/dtos/asset
 import { MapAsset, mapAsset } from 'src/dtos/asset-response.dto';
 import { AuthDto } from 'src/dtos/auth.dto';
 import { DuplicateResolveDto, DuplicateResolveGroupDto, DuplicateResponseDto } from 'src/dtos/duplicate.dto';
-import { AssetStatus, AssetVisibility, DatabaseLock, JobName, JobStatus, Permission, QueueName } from 'src/enum';
+import {
+  AssetStatus,
+  AssetType,
+  AssetVisibility,
+  DatabaseLock,
+  JobName,
+  JobStatus,
+  Permission,
+  QueueName,
+} from 'src/enum';
 import { ArgOf } from 'src/repositories/event.repository';
 import { AssetDuplicateResult } from 'src/repositories/search.repository';
 import { BaseService } from 'src/services/base.service';
@@ -22,7 +31,9 @@ enum AutoStackFormat {
   Raw,
 }
 
-type AutoStackAsset = Awaited<ReturnType<DuplicateService['duplicateRepository']['getForAutoStack']>>[number] & {
+type AutoStackSeed = NonNullable<Awaited<ReturnType<DuplicateService['duplicateRepository']['getAutoStackSeed']>>>;
+
+type AutoStackAsset = AutoStackSeed & {
   format: AutoStackFormat;
   hash: bigint;
 };
@@ -54,6 +65,42 @@ const getAutoStackFormat = (fileName: string): AutoStackFormat | undefined => {
     return AutoStackFormat.Raw;
   }
 };
+
+const normalizeCaptureBasename = (fileName: string) => {
+  const lower = fileName.toLowerCase();
+  const rawMarker = lower.indexOf('.raw-');
+  return (rawMarker === -1 ? fileName.slice(0, -extname(fileName).length) : fileName.slice(0, rawMarker))
+    .trim()
+    .toLowerCase();
+};
+
+const normalizeCaptureMetadata = (value: string | null) => value?.trim().toLowerCase() || null;
+
+const hasMatchingCaptureIdentity = (seed: AutoStackSeed, candidate: AutoStackSeed) => {
+  const seedBasename = normalizeCaptureBasename(seed.originalFileName);
+  const candidateBasename = normalizeCaptureBasename(candidate.originalFileName);
+  if (seedBasename && seedBasename === candidateBasename) {
+    return true;
+  }
+
+  const seedMake = normalizeCaptureMetadata(seed.make);
+  const seedModel = normalizeCaptureMetadata(seed.model);
+  const candidateMake = normalizeCaptureMetadata(candidate.make);
+  const candidateModel = normalizeCaptureMetadata(candidate.model);
+  if (!seedMake || !seedModel || seedMake !== candidateMake || seedModel !== candidateModel) {
+    return false;
+  }
+
+  const seedLens = normalizeCaptureMetadata(seed.lensModel);
+  const candidateLens = normalizeCaptureMetadata(candidate.lensModel);
+  return seedLens || candidateLens ? !!seedLens && seedLens === candidateLens : true;
+};
+
+const isWithinCaptureWindow = (seed: AutoStackSeed, candidate: AutoStackSeed) =>
+  Math.abs(seed.localDateTime.getTime() - candidate.localDateTime.getTime()) <= 1000 ||
+  (!!seed.dateTimeOriginal &&
+    !!candidate.dateTimeOriginal &&
+    Math.abs(seed.dateTimeOriginal.getTime() - candidate.dateTimeOriginal.getTime()) <= 1000);
 
 type ResolveRequest = {
   assetUpdate: {
@@ -435,9 +482,6 @@ export class DuplicateService extends BaseService {
       );
       const result = await this.updateDuplicates(asset, duplicateAssets);
       assetIds = result.assetIds;
-      if (machineLearning.duplicateDetection.autoStack) {
-        await this.jobRepository.queue({ name: JobName.AssetAutoStackDuplicates, data: { id: result.duplicateId } });
-      }
     } else if (asset.duplicateId) {
       this.logger.debug(`No duplicates found for asset ${asset.id}, removing duplicateId`);
       await this.assetRepository.update({ id: asset.id, duplicateId: null });
@@ -445,6 +489,9 @@ export class DuplicateService extends BaseService {
 
     const duplicatesDetectedAt = new Date();
     await this.assetRepository.upsertJobStatus(...assetIds.map((assetId) => ({ assetId, duplicatesDetectedAt })));
+    if (machineLearning.duplicateDetection.autoStack && asset.type === AssetType.Image) {
+      await this.jobRepository.queue({ name: JobName.AssetAutoStackDuplicates, data: { id: asset.id } });
+    }
 
     return JobStatus.Success;
   }
@@ -511,20 +558,54 @@ export class DuplicateService extends BaseService {
   }
 
   private async autoStackDuplicates(id: string, threshold: number): Promise<JobStatus> {
-    const group = await this.duplicateRepository.getForAutoStack(id);
-    const candidates = group
-      .map((asset) => ({ ...asset, format: getAutoStackFormat(asset.originalFileName) }))
-      .filter(
-        (asset): asset is typeof asset & { format: AutoStackFormat; previewPath: string } =>
-          asset.format !== undefined &&
-          !!asset.previewPath &&
-          !asset.stackId &&
-          [AssetVisibility.Archive, AssetVisibility.Timeline].includes(asset.visibility),
-      );
-    if (candidates.length < 2) {
+    const seed = await this.duplicateRepository.getAutoStackSeed(id);
+    if (!seed || seed.stackId || ![AssetVisibility.Archive, AssetVisibility.Timeline].includes(seed.visibility)) {
+      this.logger.debug(`Auto-stack seed ${id} is no longer eligible or is already stacked`);
       return JobStatus.Skipped;
     }
 
+    const seedFormat = getAutoStackFormat(seed.originalFileName);
+    if (!seed.previewPath || seedFormat === undefined) {
+      this.logger.debug(`Auto-stack seed ${id} is missing a preview or has an ineligible format`);
+      return JobStatus.Skipped;
+    }
+
+    const candidateResults = await this.duplicateRepository.getAutoStackCandidates({
+      assetId: seed.id,
+      ownerId: seed.ownerId,
+      duplicateId: seed.duplicateId,
+      localDateTime: seed.localDateTime,
+      dateTimeOriginal: seed.dateTimeOriginal,
+    });
+    const candidates = candidateResults
+      .map((asset) => ({ ...asset, format: getAutoStackFormat(asset.originalFileName) }))
+      .filter((asset): asset is typeof asset & { format: AutoStackFormat; previewPath: string } => {
+        const isEligible =
+          asset.format !== undefined &&
+          !!asset.previewPath &&
+          !asset.stackId &&
+          [AssetVisibility.Archive, AssetVisibility.Timeline].includes(asset.visibility);
+        if (!isEligible) {
+          this.logger.debug(`Auto-stack candidate ${asset.id} is no longer eligible`);
+          return false;
+        }
+
+        const hasDuplicateMatch = !!seed.duplicateId && asset.duplicateId === seed.duplicateId;
+        const hasMetadataMatch = isWithinCaptureWindow(seed, asset) && hasMatchingCaptureIdentity(seed, asset);
+        if (!hasDuplicateMatch && !hasMetadataMatch) {
+          this.logger.debug(
+            `Auto-stack candidate ${asset.id} rejected for seed ${id}: capture time or identity did not match`,
+          );
+          return false;
+        }
+        return true;
+      });
+    if (candidates.length === 0) {
+      this.logger.debug(`No metadata or CLIP candidates found for auto-stack seed ${id}`);
+      return JobStatus.Skipped;
+    }
+
+    candidates.push({ ...seed, format: seedFormat, previewPath: seed.previewPath });
     candidates.sort(compareAutoStackAssets);
     const assets: AutoStackAsset[] = await Promise.all(
       candidates.map(async (asset) => ({
@@ -534,9 +615,19 @@ export class DuplicateService extends BaseService {
     );
     const components: AutoStackAsset[][] = [];
     for (const asset of assets) {
-      const component = components.find((component) =>
-        component.every((member) => getHammingDistance(member.hash, asset.hash) <= threshold),
-      );
+      const component = components.find((component) => {
+        const distances = component.map((member) => ({
+          id: member.id,
+          distance: getHammingDistance(member.hash, asset.hash),
+        }));
+        const matches = distances.every(({ distance }) => distance <= threshold);
+        if (!matches) {
+          this.logger.debug(
+            `Auto-stack asset ${asset.id} rejected from cluster [${component.map(({ id }) => id).join(', ')}]: ${distances.map(({ id, distance }) => `${id}=${distance}`).join(', ')} (threshold=${threshold})`,
+          );
+        }
+        return matches;
+      });
       if (component) {
         component.push(asset);
       } else {
@@ -561,6 +652,9 @@ export class DuplicateService extends BaseService {
         return true;
       });
       if (selected.length < 2) {
+        this.logger.debug(
+          `Skipping auto-stack cluster [${component.map(({ id }) => id).join(', ')}]: fewer than two format categories`,
+        );
         continue;
       }
 

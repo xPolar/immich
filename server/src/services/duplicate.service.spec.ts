@@ -33,7 +33,13 @@ const autoStackAsset = (
   id: string,
   originalFileName: string,
   options: {
+    dateTimeOriginal?: Date | null;
+    duplicateId?: string | null;
     fileSizeInByte?: number;
+    lensModel?: string | null;
+    localDateTime?: Date;
+    make?: string | null;
+    model?: string | null;
     ownerId?: string;
     previewPath?: string | null;
     stackId?: string | null;
@@ -45,7 +51,14 @@ const autoStackAsset = (
   type: AssetType.Image,
   visibility: AssetVisibility.Timeline,
   stackId: options.stackId ?? null,
+  duplicateId: options.duplicateId === undefined ? 'duplicate-id' : options.duplicateId,
+  localDateTime: options.localDateTime ?? new Date('2025-01-01T00:00:00Z'),
   fileSizeInByte: options.fileSizeInByte ?? 1000,
+  dateTimeOriginal:
+    options.dateTimeOriginal === undefined ? new Date('2025-01-01T00:00:00Z') : options.dateTimeOriginal,
+  make: options.make ?? null,
+  model: options.model ?? null,
+  lensModel: options.lensModel ?? null,
   previewPath: options.previewPath === undefined ? `/preview/${id}.jpeg` : options.previewPath,
 });
 
@@ -53,6 +66,11 @@ const autoStackConfig = () => {
   const config = structuredClone(defaults);
   config.machineLearning.duplicateDetection.autoStack = true;
   return config;
+};
+
+const mockAutoStackAssets = (mocks: ServiceMocks, assets: ReturnType<typeof autoStackAsset>[]) => {
+  mocks.duplicateRepository.getAutoStackSeed.mockResolvedValue(assets[0]);
+  mocks.duplicateRepository.getAutoStackCandidates.mockResolvedValue(assets.slice(1));
 };
 
 describe(DuplicateService.name, () => {
@@ -530,7 +548,7 @@ describe(DuplicateService.name, () => {
       );
     });
 
-    it('should enqueue auto-stacking for the updated duplicate group when enabled', async () => {
+    it('should enqueue auto-stacking for the seed asset when enabled', async () => {
       const config = structuredClone(defaults);
       config.machineLearning.duplicateDetection.autoStack = true;
       mocks.systemMetadata.get.mockResolvedValue(config);
@@ -543,7 +561,21 @@ describe(DuplicateService.name, () => {
 
       expect(mocks.job.queue).toHaveBeenCalledWith({
         name: JobName.AssetAutoStackDuplicates,
-        data: { id: 'duplicate-id' },
+        data: { id: hasEmbedding.id },
+      });
+    });
+
+    it('should enqueue auto-stacking when CLIP finds no duplicates', async () => {
+      const config = autoStackConfig();
+      mocks.systemMetadata.get.mockResolvedValue(config);
+      mocks.assetJob.getForSearchDuplicatesJob.mockResolvedValue(hasEmbedding);
+      mocks.duplicateRepository.search.mockResolvedValue([]);
+
+      await expect(sut.handleSearchDuplicates({ id: hasEmbedding.id })).resolves.toBe(JobStatus.Success);
+
+      expect(mocks.job.queue).toHaveBeenCalledWith({
+        name: JobName.AssetAutoStackDuplicates,
+        data: { id: hasEmbedding.id },
       });
     });
 
@@ -631,15 +663,17 @@ describe(DuplicateService.name, () => {
       });
     });
 
-    it('should fan out existing duplicate groups', async () => {
+    it('should fan out all eligible assets including assets without a duplicate ID', async () => {
       mocks.systemMetadata.get.mockResolvedValue(autoStackConfig());
-      mocks.duplicateRepository.streamForAutoStack.mockReturnValue(makeStream([{ id: 'group-1' }, { id: 'group-2' }]));
+      mocks.duplicateRepository.streamForAutoStack.mockReturnValue(
+        makeStream([{ id: 'asset-without-duplicate-id' }, { id: 'asset-with-duplicate-id' }]),
+      );
 
       await expect(sut.handleQueueAutoStackDuplicates()).resolves.toBe(JobStatus.Success);
 
       expect(mocks.job.queueAll).toHaveBeenCalledWith([
-        { name: JobName.AssetAutoStackDuplicates, data: { id: 'group-1' } },
-        { name: JobName.AssetAutoStackDuplicates, data: { id: 'group-2' } },
+        { name: JobName.AssetAutoStackDuplicates, data: { id: 'asset-without-duplicate-id' } },
+        { name: JobName.AssetAutoStackDuplicates, data: { id: 'asset-with-duplicate-id' } },
       ]);
     });
 
@@ -650,12 +684,12 @@ describe(DuplicateService.name, () => {
       await expect(sut.handleAutoStackDuplicates({ id: 'group-1' })).resolves.toBe(JobStatus.Skipped);
 
       expect(mocks.duplicateRepository.streamForAutoStack).not.toHaveBeenCalled();
-      expect(mocks.duplicateRepository.getForAutoStack).not.toHaveBeenCalled();
+      expect(mocks.duplicateRepository.getAutoStackSeed).not.toHaveBeenCalled();
     });
 
     it('should choose JPEG, larger file, and ID order as the primary and emit StackCreate', async () => {
       mocks.systemMetadata.get.mockResolvedValue(autoStackConfig());
-      mocks.duplicateRepository.getForAutoStack.mockResolvedValue([
+      mockAutoStackAssets(mocks, [
         autoStackAsset('raw', 'photo.nef', { fileSizeInByte: 9000 }),
         autoStackAsset('png', 'photo.png', { fileSizeInByte: 8000 }),
         autoStackAsset('jpeg-b', 'photo.jpeg', { fileSizeInByte: 3000 }),
@@ -677,10 +711,7 @@ describe(DuplicateService.name, () => {
 
     it('should skip same-format copies', async () => {
       mocks.systemMetadata.get.mockResolvedValue(autoStackConfig());
-      mocks.duplicateRepository.getForAutoStack.mockResolvedValue([
-        autoStackAsset('jpeg-1', 'one.jpg'),
-        autoStackAsset('jpeg-2', 'two.jpeg'),
-      ]);
+      mockAutoStackAssets(mocks, [autoStackAsset('jpeg-1', 'one.jpg'), autoStackAsset('jpeg-2', 'two.jpeg')]);
       mocks.media.getPerceptualHash.mockResolvedValue(1n);
 
       await expect(sut.handleAutoStackDuplicates({ id: 'group-1' })).resolves.toBe(JobStatus.Skipped);
@@ -689,7 +720,7 @@ describe(DuplicateService.name, () => {
 
     it('should omit lower-priority copies of a selected format', async () => {
       mocks.systemMetadata.get.mockResolvedValue(autoStackConfig());
-      mocks.duplicateRepository.getForAutoStack.mockResolvedValue([
+      mockAutoStackAssets(mocks, [
         autoStackAsset('jpeg-small', 'small.jpg', { fileSizeInByte: 1000 }),
         autoStackAsset('png', 'photo.png', { fileSizeInByte: 2000 }),
         autoStackAsset('jpeg-large', 'large.jpeg', { fileSizeInByte: 3000 }),
@@ -711,19 +742,105 @@ describe(DuplicateService.name, () => {
 
     it('should skip perceptually different mixed formats', async () => {
       mocks.systemMetadata.get.mockResolvedValue(autoStackConfig());
-      mocks.duplicateRepository.getForAutoStack.mockResolvedValue([
-        autoStackAsset('jpeg', 'one.jpg'),
-        autoStackAsset('png', 'two.png'),
-      ]);
+      mockAutoStackAssets(mocks, [autoStackAsset('jpeg', 'one.jpg'), autoStackAsset('png', 'two.png')]);
       mocks.media.getPerceptualHash.mockResolvedValueOnce(0n).mockResolvedValueOnce((1n << 64n) - 1n);
 
       await expect(sut.handleAutoStackDuplicates({ id: 'group-1' })).resolves.toBe(JobStatus.Skipped);
+      expect(mocks.stack.create).not.toHaveBeenCalled();
+      expect(mocks.logger.debug).toHaveBeenCalledWith(
+        'Auto-stack asset png rejected from cluster [jpeg]: jpeg=64 (threshold=6)',
+      );
+    });
+
+    it('should stack metadata-matched camera variants without a duplicate ID', async () => {
+      mocks.systemMetadata.get.mockResolvedValue(autoStackConfig());
+      mockAutoStackAssets(mocks, [
+        autoStackAsset('jpeg', 'edited-name.jpg', {
+          duplicateId: null,
+          make: 'Canon',
+          model: 'EOS R5',
+          lensModel: 'RF24-70mm F2.8',
+        }),
+        autoStackAsset('raw', 'original-name.cr3', {
+          duplicateId: null,
+          make: 'canon',
+          model: 'eos r5',
+          lensModel: 'rf24-70mm f2.8',
+        }),
+      ]);
+      mocks.media.getPerceptualHash.mockResolvedValue(1n);
+      mocks.stack.create.mockResolvedValue({ id: 'stack-id' } as any);
+
+      await expect(sut.handleAutoStackDuplicates({ id: 'jpeg' })).resolves.toBe(JobStatus.Success);
+
+      expect(mocks.duplicateRepository.getAutoStackCandidates).toHaveBeenCalledWith({
+        assetId: 'jpeg',
+        ownerId: 'user-id',
+        duplicateId: null,
+        localDateTime: new Date('2025-01-01T00:00:00Z'),
+        dateTimeOriginal: new Date('2025-01-01T00:00:00Z'),
+      });
+      expect(mocks.media.getPerceptualHash).toHaveBeenCalledTimes(2);
+      expect(mocks.stack.create).toHaveBeenCalledWith({ ownerId: 'user-id' }, ['jpeg', 'raw'], {
+        clearDuplicateId: true,
+      });
+    });
+
+    it('should stack Pixel RAW and JPEG variants by normalized capture basename', async () => {
+      mocks.systemMetadata.get.mockResolvedValue(autoStackConfig());
+      mockAutoStackAssets(mocks, [
+        autoStackAsset('jpeg', 'PXL_20250101_120000.RAW-01.COVER.jpg', { duplicateId: null }),
+        autoStackAsset('raw', 'PXL_20250101_120000.RAW-02.ORIGINAL.dng', { duplicateId: null }),
+      ]);
+      mocks.media.getPerceptualHash.mockResolvedValue(1n);
+      mocks.stack.create.mockResolvedValue({ id: 'stack-id' } as any);
+
+      await expect(sut.handleAutoStackDuplicates({ id: 'jpeg' })).resolves.toBe(JobStatus.Success);
+
+      expect(mocks.stack.create).toHaveBeenCalledWith({ ownerId: 'user-id' }, ['jpeg', 'raw'], {
+        clearDuplicateId: true,
+      });
+    });
+
+    it('should reject timestamp-adjacent assets with unrelated basename and camera', async () => {
+      mocks.systemMetadata.get.mockResolvedValue(autoStackConfig());
+      mockAutoStackAssets(mocks, [
+        autoStackAsset('jpeg', 'first.jpg', {
+          duplicateId: null,
+          make: 'Canon',
+          model: 'EOS R5',
+          lensModel: 'RF24-70mm',
+        }),
+        autoStackAsset('raw', 'second.nef', {
+          duplicateId: null,
+          make: 'Nikon',
+          model: 'Z8',
+          lensModel: 'Nikkor 24-70mm',
+        }),
+      ]);
+
+      await expect(sut.handleAutoStackDuplicates({ id: 'jpeg' })).resolves.toBe(JobStatus.Skipped);
+
+      expect(mocks.media.getPerceptualHash).not.toHaveBeenCalled();
+      expect(mocks.stack.create).not.toHaveBeenCalled();
+    });
+
+    it('should not broadly match timestamp-adjacent assets with missing capture metadata', async () => {
+      mocks.systemMetadata.get.mockResolvedValue(autoStackConfig());
+      mockAutoStackAssets(mocks, [
+        autoStackAsset('jpeg', 'first.jpg', { duplicateId: null }),
+        autoStackAsset('raw', 'second.dng', { duplicateId: null }),
+      ]);
+
+      await expect(sut.handleAutoStackDuplicates({ id: 'jpeg' })).resolves.toBe(JobStatus.Skipped);
+
+      expect(mocks.media.getPerceptualHash).not.toHaveBeenCalled();
       expect(mocks.stack.create).not.toHaveBeenCalled();
     });
 
     it('should not join dissimilar endpoints through a transitive perceptual match', async () => {
       mocks.systemMetadata.get.mockResolvedValue(autoStackConfig());
-      mocks.duplicateRepository.getForAutoStack.mockResolvedValue([
+      mockAutoStackAssets(mocks, [
         autoStackAsset('raw-c', 'three.nef'),
         autoStackAsset('png-b', 'two.png'),
         autoStackAsset('jpeg-a', 'one.jpg'),
@@ -754,7 +871,7 @@ describe(DuplicateService.name, () => {
 
     it('should refuse to stack a component containing multiple owners', async () => {
       mocks.systemMetadata.get.mockResolvedValue(autoStackConfig());
-      mocks.duplicateRepository.getForAutoStack.mockResolvedValue([
+      mockAutoStackAssets(mocks, [
         autoStackAsset('jpeg', 'one.jpg'),
         autoStackAsset('png', 'two.png', { ownerId: 'other-user-id' }),
       ]);
@@ -770,7 +887,7 @@ describe(DuplicateService.name, () => {
 
     it('should skip assets that are already stacked or missing a preview', async () => {
       mocks.systemMetadata.get.mockResolvedValue(autoStackConfig());
-      mocks.duplicateRepository.getForAutoStack.mockResolvedValue([
+      mockAutoStackAssets(mocks, [
         autoStackAsset('jpeg', 'one.jpg'),
         autoStackAsset('png-stacked', 'two.png', { stackId: 'stack-id' }),
         autoStackAsset('png-no-preview', 'three.png', { previewPath: null }),
@@ -778,6 +895,18 @@ describe(DuplicateService.name, () => {
 
       await expect(sut.handleAutoStackDuplicates({ id: 'group-1' })).resolves.toBe(JobStatus.Skipped);
       expect(mocks.media.getPerceptualHash).not.toHaveBeenCalled();
+      expect(mocks.stack.create).not.toHaveBeenCalled();
+    });
+
+    it('should skip an already-stacked seed after acquiring the lock', async () => {
+      mocks.systemMetadata.get.mockResolvedValue(autoStackConfig());
+      mocks.duplicateRepository.getAutoStackSeed.mockResolvedValue(
+        autoStackAsset('jpeg', 'one.jpg', { stackId: 'existing-stack' }),
+      );
+
+      await expect(sut.handleAutoStackDuplicates({ id: 'jpeg' })).resolves.toBe(JobStatus.Skipped);
+
+      expect(mocks.duplicateRepository.getAutoStackCandidates).not.toHaveBeenCalled();
       expect(mocks.stack.create).not.toHaveBeenCalled();
     });
   });
