@@ -3,7 +3,6 @@
   import { getAlbumSharedLinkViews, type SharedLinkViewResponseDto } from '@immich/sdk';
   import { Button, modalManager } from '@immich/ui';
   import { mdiChartLine } from '@mdi/js';
-  import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
 
   type Props = {
@@ -12,13 +11,28 @@
 
   const { albumId }: Props = $props();
   let analytics: SharedLinkViewResponseDto | undefined = $state();
+  let requestGeneration = 0;
 
-  onMount(async () => {
-    try {
-      analytics = await getAlbumSharedLinkViews({ id: albumId, period: 'all' });
-    } catch {
-      analytics = undefined;
-    }
+  $effect(() => {
+    const id = albumId;
+    const generation = ++requestGeneration;
+    analytics = undefined;
+
+    void getAlbumSharedLinkViews({ id, period: 'all' })
+      .then((response) => {
+        if (generation === requestGeneration) {
+          analytics = response;
+        }
+      })
+      .catch(() => {
+        if (generation === requestGeneration) {
+          analytics = undefined;
+        }
+      });
+
+    return () => {
+      requestGeneration++;
+    };
   });
 
   const showAnalytics = () => modalManager.show(SharedLinkAnalyticsModal, { target: { type: 'album', albumId } });
