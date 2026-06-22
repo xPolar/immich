@@ -1,5 +1,6 @@
 import '@testing-library/jest-dom';
 import { render, screen, waitFor } from '@testing-library/svelte';
+import { tick } from 'svelte';
 import { init, register, waitLocale } from 'svelte-i18n';
 import { sdkMock } from '$lib/__mocks__/sdk.mock';
 import AlbumSharedLinkAnalytics from './AlbumSharedLinkAnalytics.svelte';
@@ -39,6 +40,9 @@ describe('AlbumSharedLinkAnalytics', () => {
     await waitFor(() => expect(screen.getByRole('button')).toHaveTextContent('20 views · 8 unique browsers'));
 
     albumA.resolve({ totalViews: 10, uniqueBrowsers: 4, daily: [] });
-    await waitFor(() => expect(screen.getByRole('button')).toHaveTextContent('20 views · 8 unique browsers'));
+    await albumA.promise;
+    await tick();
+
+    expect(screen.getByRole('button')).toHaveTextContent('20 views · 8 unique browsers');
   });
 });
