@@ -154,4 +154,26 @@ describe('resolveTypedSearchFilters', () => {
       filters: { personIds: ['anna-id', 'annika-id'] },
     });
   });
+
+  it('does not reuse a stable choice after the token value changes', async () => {
+    const selectedChoices = new Map([
+      [
+        'person#0',
+        {
+          tokenRaw: 'person:ann',
+          key: 'person' as const,
+          id: 'anna-id',
+          label: 'Anna',
+          value: 'ann',
+          tokenIdentity: 'person#0' as const,
+        },
+      ],
+    ]);
+    vi.mocked(searchPerson).mockResolvedValue([{ id: 'bob-id', name: 'Bob' }] as never);
+
+    const result = await resolveTypedSearchFilters(parseTypedSearch('person:bob'), { selectedChoices });
+
+    expect(searchPerson).toHaveBeenCalledWith({ name: 'bob', withHidden: false }, { signal: undefined });
+    expect(result).toMatchObject({ ok: true, filters: { personIds: ['bob-id'] } });
+  });
 });

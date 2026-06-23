@@ -71,6 +71,16 @@ describe('parseTypedSearch', () => {
     ]);
   });
 
+  it('reserves stable occurrence identity for empty entity placeholders', () => {
+    const draft = parseTypedSearch('person: person:ann', { mode: 'draft' });
+    const commit = parseTypedSearch('person: person:ann');
+
+    expect(draft.displayTokens.map((token) => token.identity)).toEqual(['person#0', 'person#1']);
+    expect(draft.resolutionTokens[0].stableIdentity).toBe('person#1');
+    expect(commit.issues[0]).toMatchObject({ code: 'empty-value', tokenIdentity: 'person#0' });
+    expect(commit.resolutionTokens[0].stableIdentity).toBe('person#1');
+  });
+
   it('keeps unterminated quoted filters as draft issues', () => {
     const result = parseTypedSearch('person:"Anna Maria', { mode: 'draft' });
 

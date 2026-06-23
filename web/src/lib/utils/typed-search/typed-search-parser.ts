@@ -208,11 +208,23 @@ export function parseTypedSearch(raw: string, options: TypedSearchParseOptions =
       continue;
     }
 
+    const resolutionKey = RESOLUTION_KEYS.has(key as TypedSearchResolutionKey)
+      ? (key as TypedSearchResolutionKey)
+      : undefined;
+    const resolutionOccurrence = resolutionKey ? (resolutionOccurrences.get(resolutionKey) ?? 0) : undefined;
+    const stableIdentity =
+      resolutionKey && resolutionOccurrence !== undefined
+        ? (`${resolutionKey}#${resolutionOccurrence}` as TypedSearchStableTokenIdentity)
+        : undefined;
+    if (resolutionKey && resolutionOccurrence !== undefined) {
+      resolutionOccurrences.set(resolutionKey, resolutionOccurrence + 1);
+    }
+
     if (piece.issue) {
-      const issue = makeIssue(piece.issue, piece.raw, issueMessage(piece.issue, key), key, piece.value);
+      const issue = makeIssue(piece.issue, piece.raw, issueMessage(piece.issue, key), key, piece.value, stableIdentity);
       token.issue = issue;
       issues.push(issue);
-      displayTokens.push({ raw: piece.raw, key, value: piece.value, status: 'error', issue });
+      displayTokens.push({ raw: piece.raw, key, value: piece.value, status: 'error', issue, identity: stableIdentity });
       continue;
     }
 
@@ -222,14 +234,22 @@ export function parseTypedSearch(raw: string, options: TypedSearchParseOptions =
           raw: piece.raw,
           key,
           value: piece.value,
-          status: RESOLUTION_KEYS.has(key as TypedSearchResolutionKey) ? 'pending-entity' : 'recognized',
+          status: resolutionKey ? 'pending-entity' : 'recognized',
+          identity: stableIdentity,
         });
         continue;
       }
-      const issue = makeIssue('empty-value', piece.raw, `Filter "${key}" needs a value`, key, piece.value);
+      const issue = makeIssue(
+        'empty-value',
+        piece.raw,
+        `Filter "${key}" needs a value`,
+        key,
+        piece.value,
+        stableIdentity,
+      );
       token.issue = issue;
       issues.push(issue);
-      displayTokens.push({ raw: piece.raw, key, value: piece.value, status: 'error', issue });
+      displayTokens.push({ raw: piece.raw, key, value: piece.value, status: 'error', issue, identity: stableIdentity });
       continue;
     }
 
@@ -242,11 +262,7 @@ export function parseTypedSearch(raw: string, options: TypedSearchParseOptions =
     }
     seenKeys.add(key);
 
-    if (RESOLUTION_KEYS.has(key as TypedSearchResolutionKey)) {
-      const resolutionKey = key as TypedSearchResolutionKey;
-      const occurrence = resolutionOccurrences.get(resolutionKey) ?? 0;
-      resolutionOccurrences.set(resolutionKey, occurrence + 1);
-      const stableIdentity: TypedSearchStableTokenIdentity = `${resolutionKey}#${occurrence}`;
+    if (resolutionKey && stableIdentity) {
       resolutionTokens.push({
         kind: 'resolution',
         key: resolutionKey,
@@ -589,8 +605,9 @@ function makeIssue(
   message: string,
   key?: string,
   value?: string,
+  tokenIdentity?: TypedSearchStableTokenIdentity,
 ): TypedSearchIssue {
-  return { code, key, raw, value, message };
+  return { code, key, raw, value, message, tokenIdentity };
 }
 
 function issueMessage(code: 'unterminated-quote' | 'malformed-quote', key: string): string {

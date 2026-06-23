@@ -178,7 +178,7 @@ function getSelectedChoice(
 ) {
   const identityChoice = context.selectedChoices?.get(token.identity);
   const stableChoice = context.selectedChoices?.get(token.stableIdentity);
-  if (stableChoice) {
+  if (stableChoice?.tokenRaw === token.raw) {
     return stableChoice;
   }
   if (identityChoice) {
