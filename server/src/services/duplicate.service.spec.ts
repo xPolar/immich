@@ -262,6 +262,93 @@ describe(DuplicateService.name, () => {
     });
   });
 
+  describe('stack', () => {
+    it('should create a separate stack for each duplicate group with the suggested asset as primary', async () => {
+      const smallAsset = AssetFactory.from().exif({ fileSizeInByte: 1000 }).build();
+      const largeAsset = AssetFactory.from().exif({ fileSizeInByte: 5000 }).build();
+      const otherSmallAsset = AssetFactory.from().exif({ fileSizeInByte: 1000 }).build();
+      const otherLargeAsset = AssetFactory.from().exif({ fileSizeInByte: 2000 }).build();
+      mocks.access.duplicate.checkOwnerAccess.mockResolvedValue(new Set(['group-1', 'group-2']));
+      mocks.access.asset.checkOwnerAccess.mockImplementation((_userId, ids) => Promise.resolve(new Set(ids)));
+      mocks.duplicateRepository.get
+        .mockResolvedValueOnce({
+          duplicateId: 'group-1',
+          assets: [getForDuplicate(smallAsset), getForDuplicate(largeAsset)],
+        })
+        .mockResolvedValueOnce({
+          duplicateId: 'group-2',
+          assets: [getForDuplicate(otherSmallAsset), getForDuplicate(otherLargeAsset)],
+        });
+      mocks.stack.create
+        .mockResolvedValueOnce({ id: 'stack-1' } as any)
+        .mockResolvedValueOnce({ id: 'stack-2' } as any);
+
+      await expect(sut.stack(authStub.admin, { ids: ['group-1', 'group-2'] })).resolves.toEqual([
+        { id: 'group-1', success: true },
+        { id: 'group-2', success: true },
+      ]);
+
+      expect(mocks.stack.create).toHaveBeenNthCalledWith(
+        1,
+        { ownerId: authStub.admin.user.id },
+        [largeAsset.id, smallAsset.id],
+        { clearDuplicateId: true },
+      );
+      expect(mocks.stack.create).toHaveBeenNthCalledWith(
+        2,
+        { ownerId: authStub.admin.user.id },
+        [otherLargeAsset.id, otherSmallAsset.id],
+        { clearDuplicateId: true },
+      );
+      expect(mocks.event.emit).toHaveBeenNthCalledWith(1, 'StackCreate', {
+        stackId: 'stack-1',
+        userId: authStub.admin.user.id,
+      });
+      expect(mocks.event.emit).toHaveBeenNthCalledWith(2, 'StackCreate', {
+        stackId: 'stack-2',
+        userId: authStub.admin.user.id,
+      });
+    });
+
+    it('should report failures without stopping the remaining groups', async () => {
+      const asset1 = AssetFactory.create();
+      const asset2 = AssetFactory.create();
+      mocks.access.duplicate.checkOwnerAccess.mockResolvedValue(new Set(['group-2']));
+      mocks.access.asset.checkOwnerAccess.mockResolvedValue(new Set([asset1.id, asset2.id]));
+      mocks.duplicateRepository.get.mockResolvedValueOnce({
+        duplicateId: 'group-2',
+        assets: [asset1 as unknown as MapAsset, asset2 as unknown as MapAsset],
+      });
+      mocks.stack.create.mockResolvedValue({ id: 'stack-2' } as any);
+
+      await expect(sut.stack(authStub.admin, { ids: ['group-1', 'group-2'] })).resolves.toEqual([
+        { id: 'group-1', success: false, error: BulkIdErrorReason.NOT_FOUND },
+        { id: 'group-2', success: true },
+      ]);
+    });
+
+    it('should reject groups containing assets the user cannot update', async () => {
+      const asset1 = AssetFactory.create();
+      const asset2 = AssetFactory.create();
+      mocks.access.duplicate.checkOwnerAccess.mockResolvedValue(new Set(['group-1']));
+      mocks.access.asset.checkOwnerAccess.mockResolvedValue(new Set([asset1.id]));
+      mocks.duplicateRepository.get.mockResolvedValue({
+        duplicateId: 'group-1',
+        assets: [asset1 as unknown as MapAsset, asset2 as unknown as MapAsset],
+      });
+
+      await expect(sut.stack(authStub.admin, { ids: ['group-1'] })).resolves.toEqual([
+        {
+          id: 'group-1',
+          success: false,
+          error: BulkIdErrorReason.NO_PERMISSION,
+          errorMessage: 'No permission to stack assets',
+        },
+      ]);
+      expect(mocks.stack.create).not.toHaveBeenCalled();
+    });
+  });
+
   describe('resolveGroup (via resolve)', () => {
     it('should fail if duplicate group not found', async () => {
       mocks.access.duplicate.checkOwnerAccess.mockResolvedValue(new Set(['missing-id']));

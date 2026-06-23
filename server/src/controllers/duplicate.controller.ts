@@ -60,4 +60,16 @@ export class DuplicateController {
   resolveDuplicates(@Auth() auth: AuthDto, @Body() dto: DuplicateResolveDto): Promise<BulkIdResponseDto[]> {
     return this.service.resolve(auth, dto);
   }
+
+  @Post('stack')
+  @HttpCode(HttpStatus.OK)
+  @Authenticated({ permission: Permission.DuplicateDelete })
+  @Endpoint({
+    summary: 'Stack duplicate groups',
+    description: 'Create a separate stack for each duplicate group.',
+    history: new HistoryBuilder().added('v3.0.0').alpha('v3.0.0'),
+  })
+  stackDuplicates(@Auth() auth: AuthDto, @Body() dto: BulkIdsDto): Promise<BulkIdResponseDto[]> {
+    return this.service.stack(auth, dto);
+  }
 }

@@ -4735,6 +4735,21 @@ export function resolveDuplicates({ duplicateResolveDto }: {
     })));
 }
 /**
+ * Stack duplicate groups
+ */
+export function stackDuplicates({ bulkIdsDto }: {
+    bulkIdsDto: BulkIdsDto;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: BulkIdResponseDto[];
+    }>("/duplicates/stack", oazapfts.json({
+        ...opts,
+        method: "POST",
+        body: bulkIdsDto
+    })));
+}
+/**
  * Dismiss a duplicate group
  */
 export function deleteDuplicate({ id }: {
