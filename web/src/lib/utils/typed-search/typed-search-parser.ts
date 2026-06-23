@@ -22,7 +22,7 @@ export type TypedSearchIssueCode =
   | 'invalid-favorite'
   | 'duplicate-filter'
   | 'unterminated-quote'
-  | 'escaped-quote'
+  | 'malformed-quote'
   | 'no-match'
   | 'ambiguous'
   | 'resolver-error';
@@ -108,7 +108,7 @@ type ParsedPiece = {
   valueStart: number;
   valueEnd: number;
   quoted: boolean;
-  issue?: 'unterminated-quote' | 'escaped-quote';
+  issue?: 'unterminated-quote' | 'malformed-quote';
 };
 
 type TypedSearchScalarTokenBase = Omit<TypedSearchScalarToken, 'start' | 'end' | 'identity'>;
@@ -173,7 +173,7 @@ export function parseTypedSearch(raw: string, options: TypedSearchParseOptions =
   const displayTokens: TypedSearchDisplayToken[] = [];
   const issues: TypedSearchIssue[] = [];
   const tokens: TypedSearchTokenSpan[] = [];
-  const seenScalarKeys = new Set<string>();
+  const seenKeys = new Set<string>();
 
   for (const piece of pieces) {
     if (!piece.key) {
@@ -228,13 +228,14 @@ export function parseTypedSearch(raw: string, options: TypedSearchParseOptions =
       continue;
     }
 
-    if (!REPEATABLE_KEYS.has(key) && seenScalarKeys.has(key)) {
+    if (!REPEATABLE_KEYS.has(key) && seenKeys.has(key)) {
       const issue = makeIssue('duplicate-filter', piece.raw, `Filter "${key}" can only be used once`, key, piece.value);
       token.issue = issue;
       issues.push(issue);
       displayTokens.push({ raw: piece.raw, key, value: piece.value, status: 'error', issue });
       continue;
     }
+    seenKeys.add(key);
 
     if (RESOLUTION_KEYS.has(key as TypedSearchResolutionKey)) {
       const resolutionKey = key as TypedSearchResolutionKey;
@@ -256,7 +257,6 @@ export function parseTypedSearch(raw: string, options: TypedSearchParseOptions =
       continue;
     }
 
-    seenScalarKeys.add(key);
     const scalar = normalizeScalarToken(key, piece.raw, piece.value);
     if ('issue' in scalar) {
       token.issue = scalar.issue;
@@ -323,7 +323,10 @@ export function rewriteTypedSearchToken(
 }
 
 function quoteTypedSearchValue(value: string): string {
-  return /\s/.test(value) ? `"${value}"` : value;
+  if (!/[\s"\\]/.test(value)) {
+    return value;
+  }
+  return `"${value.replaceAll('\\', String.raw`\\`).replaceAll('"', String.raw`\"`)}"`;
 }
 
 function normalizeFilterKey(rawKey: string): TypedSearchFilterKey | undefined {
@@ -340,7 +343,7 @@ function splitSearch(raw: string): ParsedPiece[] {
 
   for (let index = 0; index < raw.length; index++) {
     const char = raw[index];
-    if (char === '"' && raw[index - 1] !== '\\') {
+    if (char === '"' && !isEscaped(raw, index)) {
       inQuote = !inQuote;
     }
 
@@ -391,22 +394,10 @@ function parsePiece(raw: string, start: number, end: number): ParsedPiece {
   }
 
   const closingQuoteIndex = findClosingQuote(rawValue);
-  const value = closingQuoteIndex === -1 ? rawValue.slice(1) : rawValue.slice(1, closingQuoteIndex);
+  const rawQuotedValue = closingQuoteIndex === -1 ? rawValue.slice(1) : rawValue.slice(1, closingQuoteIndex);
+  const value = unescapeQuotedValue(rawQuotedValue);
   const valueStart = start + valueOffset + 1;
   const valueEnd = closingQuoteIndex === -1 ? end : start + valueOffset + closingQuoteIndex;
-  if (value.includes(String.raw`\"`)) {
-    return {
-      raw,
-      start,
-      end,
-      key,
-      value,
-      valueStart,
-      valueEnd,
-      quoted: true,
-      issue: 'escaped-quote',
-    };
-  }
   if (closingQuoteIndex === -1) {
     return {
       raw,
@@ -420,17 +411,42 @@ function parsePiece(raw: string, start: number, end: number): ParsedPiece {
       issue: 'unterminated-quote',
     };
   }
+  if (closingQuoteIndex !== rawValue.length - 1) {
+    return {
+      raw,
+      start,
+      end,
+      key,
+      value,
+      valueStart,
+      valueEnd,
+      quoted: true,
+      issue: 'malformed-quote',
+    };
+  }
 
   return { raw, start, end, key, value, valueStart, valueEnd, quoted: true };
 }
 
 function findClosingQuote(value: string): number {
   for (let index = 1; index < value.length; index++) {
-    if (value[index] === '"' && value[index - 1] !== '\\') {
+    if (value[index] === '"' && !isEscaped(value, index)) {
       return index;
     }
   }
   return -1;
+}
+
+function isEscaped(value: string, index: number) {
+  let backslashCount = 0;
+  for (let cursor = index - 1; cursor >= 0 && value[cursor] === '\\'; cursor--) {
+    backslashCount++;
+  }
+  return backslashCount % 2 === 1;
+}
+
+function unescapeQuotedValue(value: string) {
+  return value.replaceAll(/\\(["\\])/g, '$1');
 }
 
 function normalizeScalarToken(key: TypedSearchFilterKey, raw: string, value: string): ScalarResult {
@@ -562,9 +578,9 @@ function makeIssue(
   return { code, key, raw, value, message };
 }
 
-function issueMessage(code: 'unterminated-quote' | 'escaped-quote', key: string): string {
-  if (code === 'escaped-quote') {
-    return 'Escaped quotes are not supported in filters';
+function issueMessage(code: 'unterminated-quote' | 'malformed-quote', key: string): string {
+  if (code === 'malformed-quote') {
+    return `Filter "${key}" has text after its quoted value`;
   }
   return `Filter "${key}" has an unterminated quote`;
 }

@@ -158,19 +158,19 @@ describe('parseTypedSearch', () => {
     expect(result.issues.map((issue) => issue.code)).toEqual(['empty-value', 'unterminated-quote']);
   });
 
-  it('rejects escaped quote sequences in quoted values', () => {
-    const raw = String.raw`person:"Anna \"The Ace\""`;
-    const value = String.raw`Anna \"The Ace\"`;
+  it('supports escaped quotes and backslashes in quoted values', () => {
+    const raw = String.raw`person:"Anna \"The Ace\" \\ Photos"`;
     const result = parseTypedSearch(raw);
 
+    expect(result.resolutionTokens).toMatchObject([{ key: 'person', value: String.raw`Anna "The Ace" \ Photos` }]);
+    expect(result.issues).toEqual([]);
+  });
+
+  it('rejects trailing text after a quoted value', () => {
+    const result = parseTypedSearch('city:"New York"trip');
+
     expect(result.issues).toEqual([
-      {
-        code: 'escaped-quote',
-        key: 'person',
-        raw,
-        value,
-        message: 'Escaped quotes are not supported in filters',
-      },
+      expect.objectContaining({ code: 'malformed-quote', key: 'city', raw: 'city:"New York"trip' }),
     ]);
   });
 
@@ -191,6 +191,15 @@ describe('parseTypedSearch', () => {
         value: 'Paris',
         message: 'Filter "city" can only be used once',
       },
+    ]);
+  });
+
+  it('rejects duplicate camera filters', () => {
+    const result = parseTypedSearch('camera:nikon camera:canon');
+
+    expect(result.resolutionTokens.map((token) => token.raw)).toEqual(['camera:nikon']);
+    expect(result.issues).toEqual([
+      expect.objectContaining({ code: 'duplicate-filter', key: 'camera', raw: 'camera:canon' }),
     ]);
   });
 
@@ -262,6 +271,17 @@ describe('parseTypedSearch', () => {
       text: 'beach person:"Anna Maria" tag:family',
       caret: 'beach person:"Anna Maria"'.length,
     });
+  });
+
+  it('round-trips rewritten values containing quotes and backslashes', () => {
+    const parsed = parseTypedSearch('person:ann', { mode: 'draft' });
+    const token = getActiveTypedSearchToken(parsed, 8);
+    const value = String.raw`Anna "Ace" \ Photos`;
+    const rewritten = rewriteTypedSearchToken(parsed.raw, token!, { key: 'person', value });
+    const reparsed = parseTypedSearch(rewritten.text);
+
+    expect(reparsed.resolutionTokens).toMatchObject([{ key: 'person', value }]);
+    expect(reparsed.issues).toEqual([]);
   });
 
   it('normalizes unsupported aliases when rewriting', () => {
