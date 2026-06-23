@@ -5,18 +5,18 @@
 
   interface Props {
     rating?: number | null;
+    minimum?: boolean;
   }
 
-  let { rating = $bindable() }: Props = $props();
+  let { rating = $bindable(), minimum = false }: Props = $props();
 
-  const options = [
+  const options = $derived([
     { value: 'null', label: $t('rating_count', { values: { count: 0 } }) },
-    { value: '1', label: $t('rating_count', { values: { count: 1 } }) },
-    { value: '2', label: $t('rating_count', { values: { count: 2 } }) },
-    { value: '3', label: $t('rating_count', { values: { count: 3 } }) },
-    { value: '4', label: $t('rating_count', { values: { count: 4 } }) },
-    { value: '5', label: $t('rating_count', { values: { count: 5 } }) },
-  ];
+    ...[1, 2, 3, 4, 5].map((count) => ({
+      value: count.toString(),
+      label: `${$t('rating_count', { values: { count } })}${minimum ? '+' : ''}`,
+    })),
+  ]);
 </script>
 
 <div class="flex flex-col">
@@ -27,6 +27,8 @@
     hideLabel
     {options}
     selectedOption={rating === undefined ? undefined : options[rating === null ? 0 : rating]}
-    onSelect={(r) => (rating = r === undefined ? undefined : Number.parseInt(r.value))}
+    onSelect={(selected) =>
+      (rating =
+        selected === undefined ? undefined : selected.value === 'null' ? null : Number.parseInt(selected.value))}
   />
 </div>

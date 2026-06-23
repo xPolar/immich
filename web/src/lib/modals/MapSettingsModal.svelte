@@ -7,9 +7,10 @@
 
   type Props = {
     onClose: (settings?: MapSettings) => void;
+    showFilters?: boolean;
   };
 
-  let { onClose }: Props = $props();
+  let { onClose, showFilters = true }: Props = $props();
   let settings = $state({ ...$mapSettings });
 
   let customDateRange = $state(!!settings.dateAfter || !!settings.dateBefore);
@@ -24,9 +25,11 @@
     <Field label={$t('allow_dark_mode')}>
       <Switch bind:checked={settings.allowDarkMode} />
     </Field>
-    <Field label={$t('only_favorites')}>
-      <Switch bind:checked={settings.onlyFavorites} />
-    </Field>
+    {#if showFilters}
+      <Field label={$t('only_favorites')}>
+        <Switch bind:checked={settings.onlyFavorites} />
+      </Field>
+    {/if}
     <Field label={$t('include_archived')}>
       <Switch bind:checked={settings.includeArchived} />
     </Field>
@@ -37,81 +40,83 @@
       <Switch bind:checked={settings.withSharedAlbums} />
     </Field>
 
-    {#if customDateRange}
-      <div in:fly={{ y: 10, duration: 200 }} class="flex flex-col gap-4">
-        <Field label={$t('date_after')}>
-          <DatePicker
-            value={DateTime.fromISO(settings.dateAfter ?? '')}
-            maxDate={DateTime.fromISO(settings.dateBefore ?? '')}
-            onChange={(date) => (settings.dateAfter = date?.toUTC().toISO() ?? undefined)}
-          />
-        </Field>
-        <Field label={$t('date_before')}>
-          <DatePicker
-            value={DateTime.fromISO(settings.dateBefore ?? '')}
-            onChange={(date) => (settings.dateBefore = date?.toUTC().toISO() ?? undefined)}
-          />
-        </Field>
-        <div class="flex justify-center">
+    {#if showFilters}
+      {#if customDateRange}
+        <div in:fly={{ y: 10, duration: 200 }} class="flex flex-col gap-4">
+          <Field label={$t('date_after')}>
+            <DatePicker
+              value={DateTime.fromISO(settings.dateAfter ?? '')}
+              maxDate={DateTime.fromISO(settings.dateBefore ?? '')}
+              onChange={(date) => (settings.dateAfter = date?.toUTC().toISO() ?? undefined)}
+            />
+          </Field>
+          <Field label={$t('date_before')}>
+            <DatePicker
+              value={DateTime.fromISO(settings.dateBefore ?? '')}
+              onChange={(date) => (settings.dateBefore = date?.toUTC().toISO() ?? undefined)}
+            />
+          </Field>
+          <div class="flex justify-center">
+            <Button
+              color="primary"
+              size="small"
+              variant="ghost"
+              onclick={() => {
+                customDateRange = false;
+                settings.dateAfter = undefined;
+                settings.dateBefore = undefined;
+              }}
+            >
+              {$t('remove_custom_date_range')}
+            </Button>
+          </div>
+        </div>
+      {:else}
+        <div in:fly={{ y: -10, duration: 200 }} class="flex flex-col gap-2">
+          <Field label={$t('date_range')}>
+            <Select
+              bind:value={settings.relativeDate}
+              options={[
+                {
+                  label: $t('all'),
+                  value: '',
+                },
+                {
+                  label: $t('past_durations.hours', { values: { hours: 24 } }),
+                  value: Duration.fromObject({ hours: 24 }).toISO(),
+                },
+                {
+                  label: $t('past_durations.days', { values: { days: 7 } }),
+                  value: Duration.fromObject({ days: 7 }).toISO(),
+                },
+                {
+                  label: $t('past_durations.days', { values: { days: 30 } }),
+                  value: Duration.fromObject({ days: 30 }).toISO(),
+                },
+                {
+                  label: $t('past_durations.years', { values: { years: 1 } }),
+                  value: Duration.fromObject({ years: 1 }).toISO(),
+                },
+                {
+                  label: $t('past_durations.years', { values: { years: 3 } }),
+                  value: Duration.fromObject({ years: 3 }).toISO(),
+                },
+              ]}
+            />
+          </Field>
           <Button
             color="primary"
             size="small"
             variant="ghost"
             onclick={() => {
-              customDateRange = false;
-              settings.dateAfter = undefined;
-              settings.dateBefore = undefined;
+              customDateRange = true;
+              settings.relativeDate = '';
             }}
           >
-            {$t('remove_custom_date_range')}
+            {$t('use_custom_date_range')}
           </Button>
         </div>
-      </div>
-    {:else}
-      <div in:fly={{ y: -10, duration: 200 }} class="flex flex-col gap-2">
-        <Field label={$t('date_range')}>
-          <Select
-            bind:value={settings.relativeDate}
-            options={[
-              {
-                label: $t('all'),
-                value: '',
-              },
-              {
-                label: $t('past_durations.hours', { values: { hours: 24 } }),
-                value: Duration.fromObject({ hours: 24 }).toISO(),
-              },
-              {
-                label: $t('past_durations.days', { values: { days: 7 } }),
-                value: Duration.fromObject({ days: 7 }).toISO(),
-              },
-              {
-                label: $t('past_durations.days', { values: { days: 30 } }),
-                value: Duration.fromObject({ days: 30 }).toISO(),
-              },
-              {
-                label: $t('past_durations.years', { values: { years: 1 } }),
-                value: Duration.fromObject({ years: 1 }).toISO(),
-              },
-              {
-                label: $t('past_durations.years', { values: { years: 3 } }),
-                value: Duration.fromObject({ years: 3 }).toISO(),
-              },
-            ]}
-          />
-        </Field>
-        <Button
-          color="primary"
-          size="small"
-          variant="ghost"
-          onclick={() => {
-            customDateRange = true;
-            settings.relativeDate = '';
-          }}
-        >
-          {$t('use_custom_date_range')}
-        </Button>
-      </div>
+      {/if}
     {/if}
   </Stack>
 </FormModal>

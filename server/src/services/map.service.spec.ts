@@ -1,3 +1,4 @@
+import { AssetType } from 'src/enum';
 import { MapService } from 'src/services/map.service';
 import { AlbumFactory } from 'test/factories/album.factory';
 import { AssetFactory } from 'test/factories/asset.factory';
@@ -92,6 +93,28 @@ describe(MapService.name, () => {
       expect(markers).toHaveLength(1);
       expect(markers[0]).toEqual(marker);
       expect(mocks.album.getAllIds).toHaveBeenCalledWith(auth.user.id);
+    });
+
+    it('should pass content filters to the map repository', async () => {
+      const auth = AuthFactory.create();
+      const filters = {
+        personIds: ['11111111-1111-4111-8111-111111111111'],
+        tagIds: ['22222222-2222-4222-8222-222222222222'],
+        make: 'Canon',
+        model: 'EOS R5',
+        lensModel: 'RF24-70mm',
+        rating: 4,
+        type: AssetType.Image,
+        takenAfter: new Date('2024-01-01T00:00:00.000Z'),
+        takenBefore: new Date('2024-12-31T23:59:59.999Z'),
+        isFavorite: true,
+      };
+      mocks.partner.getAll.mockResolvedValue([]);
+      mocks.map.getMapMarkers.mockResolvedValue([]);
+
+      await sut.getMapMarkers(auth, filters);
+
+      expect(mocks.map.getMapMarkers).toHaveBeenCalledWith(auth.user.id, [auth.user.id], [], filters);
     });
   });
 
