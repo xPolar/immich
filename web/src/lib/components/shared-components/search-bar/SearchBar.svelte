@@ -188,7 +188,10 @@
       const selected =
         (displayToken.identity && selectedChoices.get(displayToken.identity)?.tokenRaw === displayToken.raw
           ? selectedChoices.get(displayToken.identity)
-          : undefined) ?? [...selectedChoices.values()].find((choice) => choice.tokenRaw === displayToken.raw);
+          : undefined) ??
+        (displayToken.identity
+          ? undefined
+          : [...selectedChoices.values()].find((choice) => choice.tokenRaw === displayToken.raw));
       return selected && (displayToken.key === 'person' || displayToken.key === 'tag')
         ? { ...displayToken, value: selected.label, status: 'resolved-entity' as const }
         : displayToken;
