@@ -176,15 +176,24 @@
     }
 
     await tick();
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     if (mode === 'all') {
       const timelineMonth =
         timelineManager.months.find(
           ({ yearMonth }) => yearMonth.year === anchor.year && yearMonth.month === anchor.month,
         ) ?? timelineManager.months.find(({ yearMonth }) => yearMonth.year === anchor.year);
       if (timelineMonth) {
-        scrollableElement.scrollTo({ top: timelineMonth.top });
-        timelineManager.updateSlidingWindow();
-        handleTimelineScroll();
+        timelineManager.isScrollingOnLoad = true;
+        try {
+          await timelineManager.loadTimelineMonth(timelineMonth.yearMonth, { cancelable: false });
+          await tick();
+          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+          scrollableElement.scrollTo({ top: timelineMonth.top });
+          timelineManager.updateSlidingWindow();
+          handleTimelineScroll();
+        } finally {
+          timelineManager.isScrollingOnLoad = false;
+        }
       }
       return;
     }
@@ -757,23 +766,16 @@
           {@const isInOrNearViewport = timelineMonth.isInOrNearViewport}
           {@const absoluteHeight = timelineMonth.top}
 
-          {#if !timelineMonth.isLoaded}
-            <div
-              style:height={timelineMonth.height + 'px'}
-              style:position="absolute"
-              style:transform={`translate3d(0,${absoluteHeight}px,0)`}
-              style:width="100%"
-            >
+          <div
+            class="timeline-month"
+            style:height={timelineMonth.height + 'px'}
+            style:position="absolute"
+            style:transform={`translate3d(0,${absoluteHeight}px,0)`}
+            style:width="100%"
+          >
+            {#if !timelineMonth.isLoaded}
               <Skeleton {invisible} height={timelineMonth.height} title={timelineMonth.title} />
-            </div>
-          {:else if isInOrNearViewport}
-            <div
-              class="timeline-month"
-              style:height={timelineMonth.height + 'px'}
-              style:position="absolute"
-              style:transform={`translate3d(0,${absoluteHeight}px,0)`}
-              style:width="100%"
-            >
+            {:else if isInOrNearViewport}
               <Month
                 {assetInteraction}
                 {customThumbnailLayout}
@@ -822,8 +824,8 @@
                   />
                 {/snippet}
               </Month>
-            </div>
-          {/if}
+            {/if}
+          </div>
         {/each}
         <!-- spacer for leadout -->
         <div

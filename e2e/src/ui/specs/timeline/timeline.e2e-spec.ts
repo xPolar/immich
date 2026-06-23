@@ -76,6 +76,7 @@ test.describe('Timeline', () => {
     test('Group the timeline by years and months', async ({ page }) => {
       await page.goto('/photos');
       await page.waitForSelector('#asset-grid');
+      await thumbnailUtils.expectTimelineHasOnScreenAssets(page);
 
       await page.getByRole('button', { name: 'Years' }).click();
       await expect(page.getByRole('button', { name: 'Years' })).toHaveAttribute('aria-pressed', 'true');
@@ -88,8 +89,8 @@ test.describe('Timeline', () => {
       const monthCard = page.getByRole('button', { name: /^Dec 2023,/ });
       await expect(monthCard).toBeInViewport();
       await monthCard.click();
-      await expect(page.getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true');
-      await thumbnailUtils.expectInViewport(page, timelineRestData.buckets.get('2023-12')![0].id);
+      await expect(page.getByRole('button', { name: 'All', exact: true })).toHaveAttribute('aria-pressed', 'true');
+      await thumbnailUtils.expectInViewport(page, timelineRestData.buckets.get('2023-12-01')![0].id);
     });
     test('Deep link to last photo', async ({ page }) => {
       const lastAsset = assets.at(-1)!;
