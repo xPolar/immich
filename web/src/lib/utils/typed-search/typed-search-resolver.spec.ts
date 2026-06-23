@@ -97,6 +97,7 @@ describe('resolveTypedSearchFilters', () => {
           id: 'other-anna-id',
           label: 'Anna',
           value: 'Anna',
+          tokenIdentity: 'person#0' as const,
         },
       ],
     ]);
@@ -115,6 +116,42 @@ describe('resolveTypedSearchFilters', () => {
       ok: false,
       issues: [expect.objectContaining({ code: 'no-match', key: 'tag' })],
       choices: [],
+    });
+  });
+
+  it('resolves repeated identical tokens by stable occurrence identity', async () => {
+    const parsed = parseTypedSearch('person:ann person:ann');
+    vi.mocked(searchPerson).mockResolvedValue([
+      { id: 'anna-id', name: 'Anna' },
+      { id: 'annika-id', name: 'Annika' },
+    ] as never);
+    const first = await resolveTypedSearchFilters(parsed);
+
+    expect(first).toMatchObject({
+      ok: false,
+      choices: [
+        expect.objectContaining({ tokenIdentity: 'person#0' }),
+        expect.objectContaining({ tokenIdentity: 'person#0' }),
+        expect.objectContaining({ tokenIdentity: 'person#1' }),
+        expect.objectContaining({ tokenIdentity: 'person#1' }),
+      ],
+    });
+    if (first.ok) {
+      throw new Error('Expected ambiguous choices');
+    }
+
+    const selectedChoices = new Map([
+      ['person#0', first.choices.find((choice) => choice.tokenIdentity === 'person#0' && choice.id === 'anna-id')!],
+      ['person#1', first.choices.find((choice) => choice.tokenIdentity === 'person#1' && choice.id === 'annika-id')!],
+    ]);
+    const resolved = await resolveTypedSearchFilters(parseTypedSearch('beach person:ann person:ann'), {
+      selectedChoices,
+    });
+
+    expect(resolved).toMatchObject({
+      ok: true,
+      queryText: 'beach',
+      filters: { personIds: ['anna-id', 'annika-id'] },
     });
   });
 });

@@ -15,6 +15,7 @@ import type {
   TypedSearchParseResult,
   TypedSearchResolutionToken,
   TypedSearchScalarToken,
+  TypedSearchStableTokenIdentity,
 } from './typed-search-parser';
 
 export type TypedSearchChoice = {
@@ -24,6 +25,7 @@ export type TypedSearchChoice = {
   label: string;
   value: string;
   field?: 'make' | 'model';
+  tokenIdentity: TypedSearchStableTokenIdentity;
 };
 
 export type TypedSearchResolveContext = {
@@ -175,6 +177,10 @@ function getSelectedChoice(
   rawTokenCounts: Map<string, number>,
 ) {
   const identityChoice = context.selectedChoices?.get(token.identity);
+  const stableChoice = context.selectedChoices?.get(token.stableIdentity);
+  if (stableChoice) {
+    return stableChoice;
+  }
   if (identityChoice) {
     return identityChoice;
   }
@@ -271,6 +277,7 @@ function resolvePersonToken(
       id: person.id,
       label: person.name,
       value: token.value,
+      tokenIdentity: token.stableIdentity,
     })),
   );
 }
@@ -304,6 +311,7 @@ function resolveTagToken(
       id: tag.id,
       label: tag.value,
       value: token.value,
+      tokenIdentity: token.stableIdentity,
     })),
   );
 }
@@ -341,6 +349,7 @@ function resolveCameraToken(
       field: match.field,
       label: match.label,
       value: token.value,
+      tokenIdentity: token.stableIdentity,
     })),
   );
 }
@@ -364,6 +373,7 @@ function noMatchIssue(token: TypedSearchResolutionToken, key: TypedSearchChoice[
     raw: token.raw,
     value: token.value,
     message: `No ${key} found for "${token.value}"`,
+    tokenIdentity: token.stableIdentity,
   };
 }
 
@@ -374,5 +384,6 @@ function ambiguousIssue(token: TypedSearchResolutionToken, key: TypedSearchChoic
     raw: token.raw,
     value: token.value,
     message: `Choose a ${key} for "${token.value}"`,
+    tokenIdentity: token.stableIdentity,
   };
 }

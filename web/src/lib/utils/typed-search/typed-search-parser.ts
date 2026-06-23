@@ -33,6 +33,7 @@ export type TypedSearchIssue = {
   raw: string;
   key?: string;
   value?: string;
+  tokenIdentity?: TypedSearchStableTokenIdentity;
 };
 
 export type TypedSearchScalarToken = {
@@ -54,6 +55,7 @@ export type TypedSearchResolutionToken = {
   start: number;
   end: number;
   identity: TypedSearchTokenIdentity;
+  stableIdentity: TypedSearchStableTokenIdentity;
 };
 
 export type TypedSearchDisplayToken = {
@@ -62,10 +64,12 @@ export type TypedSearchDisplayToken = {
   value: string;
   status: 'recognized' | 'pending-entity' | 'resolved-entity' | 'error';
   issue?: TypedSearchIssue;
+  identity?: TypedSearchStableTokenIdentity;
 };
 
 export type TypedSearchParseMode = 'commit' | 'draft';
 export type TypedSearchTokenIdentity = `${TypedSearchFilterKey}:${number}:${number}:${string}`;
+export type TypedSearchStableTokenIdentity = `${TypedSearchResolutionKey}#${number}`;
 
 export type TypedSearchTokenSpan = {
   raw: string;
@@ -174,6 +178,7 @@ export function parseTypedSearch(raw: string, options: TypedSearchParseOptions =
   const issues: TypedSearchIssue[] = [];
   const tokens: TypedSearchTokenSpan[] = [];
   const seenKeys = new Set<string>();
+  const resolutionOccurrences = new Map<TypedSearchResolutionKey, number>();
 
   for (const piece of pieces) {
     if (!piece.key) {
@@ -239,6 +244,9 @@ export function parseTypedSearch(raw: string, options: TypedSearchParseOptions =
 
     if (RESOLUTION_KEYS.has(key as TypedSearchResolutionKey)) {
       const resolutionKey = key as TypedSearchResolutionKey;
+      const occurrence = resolutionOccurrences.get(resolutionKey) ?? 0;
+      resolutionOccurrences.set(resolutionKey, occurrence + 1);
+      const stableIdentity: TypedSearchStableTokenIdentity = `${resolutionKey}#${occurrence}`;
       resolutionTokens.push({
         kind: 'resolution',
         key: resolutionKey,
@@ -252,8 +260,15 @@ export function parseTypedSearch(raw: string, options: TypedSearchParseOptions =
           end: piece.end,
           raw: piece.raw,
         }),
+        stableIdentity,
       });
-      displayTokens.push({ raw: piece.raw, key, value: piece.value, status: 'pending-entity' });
+      displayTokens.push({
+        raw: piece.raw,
+        key,
+        value: piece.value,
+        status: 'pending-entity',
+        identity: stableIdentity,
+      });
       continue;
     }
 

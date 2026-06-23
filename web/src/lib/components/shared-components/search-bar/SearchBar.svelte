@@ -17,7 +17,6 @@
   } from '$lib/utils/typed-search/typed-search-live-suggestions';
   import {
     getActiveTypedSearchToken,
-    getTypedSearchTokenIdentity,
     parseTypedSearch,
     rewriteTypedSearchToken,
     type TypedSearchDisplayToken,
@@ -186,7 +185,9 @@
 
   function applyParsedState(parsed: TypedSearchParseResult) {
     typedSearchDisplayTokens = parsed.displayTokens.map((displayToken) => {
-      const selected = [...selectedChoices.values()].find((choice) => choice.tokenRaw === displayToken.raw);
+      const selected =
+        (displayToken.identity ? selectedChoices.get(displayToken.identity) : undefined) ??
+        [...selectedChoices.values()].find((choice) => choice.tokenRaw === displayToken.raw);
       return selected && (displayToken.key === 'person' || displayToken.key === 'tag')
         ? { ...displayToken, value: selected.label, status: 'resolved-entity' as const }
         : displayToken;
@@ -195,7 +196,11 @@
     typedSearchChoices = [];
 
     for (const key of selectedChoices.keys()) {
-      if (!parsed.resolutionTokens.some((token) => token.raw === key || token.identity === key)) {
+      if (
+        !parsed.resolutionTokens.some(
+          (token) => token.raw === key || token.identity === key || token.stableIdentity === key,
+        )
+      ) {
         selectedChoices.delete(key);
       }
     }
@@ -303,12 +308,12 @@
   }
 
   function selectTypedSearchChoice(choice: TypedSearchChoice) {
-    selectedChoices.set(choice.tokenRaw, choice);
-    typedSearchIssues = typedSearchIssues.filter((issue) => issue.raw !== choice.tokenRaw);
-    typedSearchChoices = typedSearchChoices.filter((item) => item.tokenRaw !== choice.tokenRaw);
+    selectedChoices.set(choice.tokenIdentity, choice);
+    typedSearchIssues = typedSearchIssues.filter((issue) => issue.tokenIdentity !== choice.tokenIdentity);
+    typedSearchChoices = typedSearchChoices.filter((item) => item.tokenIdentity !== choice.tokenIdentity);
     typedSearchDisplayTokens = typedSearchDisplayTokens.map((token) =>
-      token.raw === choice.tokenRaw
-        ? { raw: token.raw, key: token.key, value: choice.label, status: 'resolved-entity' as const }
+      token.identity === choice.tokenIdentity
+        ? { ...token, value: choice.label, status: 'resolved-entity' as const }
         : token,
     );
   }
@@ -343,11 +348,13 @@
         id: choice.entityId,
         label: choice.label,
         value: rewrittenToken.value,
+        tokenIdentity: `${choice.key}#0`,
       };
-      selectedChoices.set(
-        getTypedSearchTokenIdentity(selectedChoice.key, rewrittenToken.start, rewrittenToken.end, rewrittenToken.raw),
-        selectedChoice,
+      const resolvedToken = parsed.resolutionTokens.find(
+        (item) => item.start === rewrittenToken.start && item.end === rewrittenToken.end,
       );
+      selectedChoice.tokenIdentity = resolvedToken?.stableIdentity ?? selectedChoice.tokenIdentity;
+      selectedChoices.set(selectedChoice.tokenIdentity, selectedChoice);
     }
 
     applyParsedState(parsed);
