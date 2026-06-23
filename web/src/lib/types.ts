@@ -60,7 +60,7 @@ export type SearchDateFilter = {
 export type SearchDisplayFilters = {
   isNotInAlbum: boolean;
   isArchive: boolean;
-  isFavorite: boolean;
+  isFavorite?: boolean;
   isStacked: boolean;
 };
 

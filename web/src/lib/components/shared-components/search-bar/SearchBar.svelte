@@ -7,21 +7,24 @@
   import { searchStore } from '$lib/stores/search.svelte';
   import { handlePromiseError } from '$lib/utils';
   import { generateId } from '$lib/utils/generate-id';
+  import { storeTypedSearchDisplayText } from '$lib/utils/typed-search/typed-search-display-cache';
   import {
-    getLiveTypedSearchSuggestions,
     isLiveTypedSearchToken,
+    resolveLiveTypedSearchSuggestions,
+    type LiveTypedSearchChoice,
+    type LiveTypedSearchStatus,
+    type LiveTypedSearchToken,
   } from '$lib/utils/typed-search/typed-search-live-suggestions';
   import {
     getActiveTypedSearchToken,
+    getTypedSearchTokenIdentity,
     parseTypedSearch,
     rewriteTypedSearchToken,
-    type TypedSearchTokenSpan,
+    type TypedSearchDisplayToken,
+    type TypedSearchIssue,
+    type TypedSearchParseResult,
   } from '$lib/utils/typed-search/typed-search-parser';
-  import {
-    resolveTypedSearchFilters,
-    typedSearchChoiceKey,
-    type TypedSearchChoice,
-  } from '$lib/utils/typed-search/typed-search-resolver';
+  import { resolveTypedSearchFilters, type TypedSearchChoice } from '$lib/utils/typed-search/typed-search-resolver';
   import type { MetadataSearchDto, SmartSearchDto } from '@immich/sdk';
   import { Button, IconButton, modalManager } from '@immich/ui';
   import { mdiClose, mdiMagnify, mdiTune } from '@mdi/js';
@@ -50,18 +53,25 @@
   let close: (() => Promise<void>) | undefined;
   let showSearchTypeDropdown = $state(false);
   let currentSearchType = $state('smart');
-  let caret = $state(0);
-  let activeInlineToken: TypedSearchTokenSpan | undefined = $state();
-  let liveChoices: TypedSearchChoice[] = $state([]);
-  let commitChoices: TypedSearchChoice[] = $state([]);
-  let liveMessage: string | undefined = $state();
-  let validationMessage: string | undefined = $state();
-  let isLoadingInlineChoices = $state(false);
+  let typedSearchDisplayTokens = $state<TypedSearchDisplayToken[]>([]);
+  let typedSearchIssues = $state<TypedSearchIssue[]>([]);
+  let typedSearchChoices = $state<TypedSearchChoice[]>([]);
   const selectedChoices = new SvelteMap<string, TypedSearchChoice>();
+  let activeInlineToken = $state<LiveTypedSearchToken>();
+  let liveTypedSearchStatus = $state<LiveTypedSearchStatus>({ status: 'idle' });
+  let caret = $state<number | null>(0);
+  let isComposing = $state(false);
+  let skipNextLiveSuggestionsForCaret: number | null = null;
+  let liveSuggestionTimer: ReturnType<typeof setTimeout> | undefined;
+  let liveSuggestionController: AbortController | undefined;
+  let liveSuggestionRequestId = 0;
 
-  let inlineChoices = $derived(commitChoices.length > 0 ? commitChoices : liveChoices);
-  let inlineMessage = $derived(validationMessage ?? liveMessage);
-  let showInlineSuggestions = $derived(Boolean(activeInlineToken || validationMessage || commitChoices.length > 0));
+  let showInlineSuggestions = $derived(
+    typedSearchDisplayTokens.length > 0 ||
+      typedSearchIssues.length > 0 ||
+      typedSearchChoices.length > 0 ||
+      liveTypedSearchStatus.status !== 'idle',
+  );
   let isSearchSuggestions = $derived(showInlineSuggestions || hasHistorySuggestions);
 
   const listboxId = generateId();
@@ -69,51 +79,17 @@
 
   onDestroy(() => {
     searchStore.isSearchEnabled = false;
+    clearLiveSuggestionRequest();
   });
 
-  $effect(() => {
-    const parsed = parseTypedSearch(value, { mode: 'draft' });
-    const token = getActiveTypedSearchToken(parsed, caret);
-    const activeToken = isLiveTypedSearchToken(token) ? token : undefined;
-    activeInlineToken = activeToken;
-    liveChoices = [];
-    liveMessage = undefined;
-
-    if (!activeToken) {
-      isLoadingInlineChoices = false;
-      return;
-    }
-
-    const controller = new AbortController();
-    isLoadingInlineChoices = true;
-    const timeout = setTimeout(() => {
-      getLiveTypedSearchSuggestions(parsed, activeToken, controller.signal)
-        .then((choices) => {
-          liveChoices = choices;
-          liveMessage = choices.length === 0 ? `No matching ${activeToken.key} found` : undefined;
-        })
-        .catch((error: unknown) => {
-          if (!(error instanceof Error && error.name === 'AbortError')) {
-            liveMessage = error instanceof Error ? error.message : 'Unable to load filter suggestions';
-          }
-        })
-        .finally(() => {
-          if (!controller.signal.aborted) {
-            isLoadingInlineChoices = false;
-          }
-        });
-    }, 150);
-
-    return () => {
-      clearTimeout(timeout);
-      controller.abort();
-    };
-  });
-
-  const handleSearch = async (payload: SmartSearchDto | MetadataSearchDto) => {
+  const handleSearch = async (payload: SmartSearchDto | MetadataSearchDto, displayText?: string) => {
     closeDropdown();
     searchStore.isSearchEnabled = false;
-    await goto(Route.search(payload));
+    const destination = Route.search(payload);
+    if (displayText) {
+      storeTypedSearchDisplayText(destination, displayText);
+    }
+    await goto(destination);
   };
 
   const clearSearchTerm = (searchTerm: string) => {
@@ -208,31 +184,207 @@
     await handleSearch(searchResult);
   };
 
+  function applyParsedState(parsed: TypedSearchParseResult) {
+    typedSearchDisplayTokens = parsed.displayTokens.map((displayToken) => {
+      const selected = [...selectedChoices.values()].find((choice) => choice.tokenRaw === displayToken.raw);
+      return selected && (displayToken.key === 'person' || displayToken.key === 'tag')
+        ? { ...displayToken, value: selected.label, status: 'resolved-entity' as const }
+        : displayToken;
+    });
+    typedSearchIssues = [];
+    typedSearchChoices = [];
+
+    for (const key of selectedChoices.keys()) {
+      if (!parsed.resolutionTokens.some((token) => token.raw === key || token.identity === key)) {
+        selectedChoices.delete(key);
+      }
+    }
+  }
+
+  function parseTypedSearchDraft() {
+    const parsed = parseTypedSearch(value, { mode: 'draft' });
+    applyParsedState(parsed);
+    updateActiveTypedSearchToken(parsed);
+    return parsed;
+  }
+
+  function clearTypedSearchDraft() {
+    typedSearchDisplayTokens = [];
+    typedSearchIssues = [];
+    typedSearchChoices = [];
+    selectedChoices.clear();
+    activeInlineToken = undefined;
+    caret = 0;
+    isComposing = false;
+    skipNextLiveSuggestionsForCaret = null;
+    resetLiveTypedSearchSuggestions();
+  }
+
+  function clearLiveSuggestionRequest() {
+    if (liveSuggestionTimer) {
+      clearTimeout(liveSuggestionTimer);
+      liveSuggestionTimer = undefined;
+    }
+    liveSuggestionController?.abort();
+    liveSuggestionController = undefined;
+  }
+
+  function resetLiveTypedSearchSuggestions() {
+    clearLiveSuggestionRequest();
+    liveSuggestionRequestId++;
+    liveTypedSearchStatus = { status: 'idle' };
+  }
+
+  function scheduleLiveTypedSearchSuggestions(parsed: TypedSearchParseResult) {
+    if (!activeInlineToken || isComposing) {
+      resetLiveTypedSearchSuggestions();
+      return;
+    }
+    if (skipNextLiveSuggestionsForCaret === caret) {
+      skipNextLiveSuggestionsForCaret = null;
+      resetLiveTypedSearchSuggestions();
+      return;
+    }
+
+    clearLiveSuggestionRequest();
+    const requestId = ++liveSuggestionRequestId;
+    const token = activeInlineToken;
+    liveTypedSearchStatus = { status: 'loading', key: token.key };
+    liveSuggestionTimer = setTimeout(() => {
+      liveSuggestionTimer = undefined;
+      const controller = new AbortController();
+      liveSuggestionController = controller;
+      const timeoutSignal = AbortSignal.timeout(15_000);
+      const signal = AbortSignal.any([controller.signal, timeoutSignal]);
+
+      resolveLiveTypedSearchSuggestions({ parsed, activeToken: token, signal })
+        .then((status) => {
+          if (requestId !== liveSuggestionRequestId) {
+            return;
+          }
+          if (timeoutSignal.aborted) {
+            liveTypedSearchStatus = { status: 'timeout', key: token.key };
+          } else if (!signal.aborted) {
+            liveTypedSearchStatus = status;
+          }
+        })
+        .catch((error: unknown) => {
+          if (requestId !== liveSuggestionRequestId) {
+            return;
+          }
+          if (timeoutSignal.aborted) {
+            liveTypedSearchStatus = { status: 'timeout', key: token.key };
+          } else if (!(error instanceof Error && error.name === 'AbortError')) {
+            liveTypedSearchStatus = {
+              status: 'error',
+              key: token.key,
+              message: error instanceof Error ? error.message : 'Unable to load filter matches',
+            };
+          }
+        })
+        .finally(() => {
+          if (liveSuggestionController === controller) {
+            liveSuggestionController = undefined;
+          }
+        });
+    }, 150);
+  }
+
+  function updateActiveTypedSearchToken(parsed = parseTypedSearch(value, { mode: 'draft' })) {
+    if (isComposing) {
+      activeInlineToken = undefined;
+      resetLiveTypedSearchSuggestions();
+      return;
+    }
+
+    const token = getActiveTypedSearchToken(parsed, caret);
+    activeInlineToken = isLiveTypedSearchToken(token) && token.issue?.code !== 'unterminated-quote' ? token : undefined;
+    scheduleLiveTypedSearchSuggestions(parsed);
+  }
+
+  function selectTypedSearchChoice(choice: TypedSearchChoice) {
+    selectedChoices.set(choice.tokenRaw, choice);
+    typedSearchIssues = typedSearchIssues.filter((issue) => issue.raw !== choice.tokenRaw);
+    typedSearchChoices = typedSearchChoices.filter((item) => item.tokenRaw !== choice.tokenRaw);
+    typedSearchDisplayTokens = typedSearchDisplayTokens.map((token) =>
+      token.raw === choice.tokenRaw
+        ? { raw: token.raw, key: token.key, value: choice.label, status: 'resolved-entity' as const }
+        : token,
+    );
+  }
+
+  async function selectLiveTypedSearchChoice(choice: LiveTypedSearchChoice) {
+    const token = activeInlineToken;
+    if (!token) {
+      return;
+    }
+
+    const { text, caret: rewrittenCaret } = rewriteTypedSearchToken(value, token, {
+      key: choice.key,
+      value: choice.value,
+    });
+    const needsSeparator = text[rewrittenCaret] === undefined || !/\s/.test(text[rewrittenCaret]);
+    value = needsSeparator ? `${text.slice(0, rewrittenCaret)} ${text.slice(rewrittenCaret)}` : text;
+    const nextCaret = needsSeparator ? rewrittenCaret + 1 : rewrittenCaret;
+    caret = nextCaret;
+    skipNextLiveSuggestionsForCaret = nextCaret;
+
+    const parsed = parseTypedSearch(value, { mode: 'draft' });
+    const rewrittenToken = getActiveTypedSearchToken(parsed, rewrittenCaret);
+    if (
+      rewrittenToken &&
+      (choice.key === 'person' || choice.key === 'tag') &&
+      choice.entityId &&
+      rewrittenToken.key === choice.key
+    ) {
+      const selectedChoice: TypedSearchChoice = {
+        tokenRaw: rewrittenToken.raw,
+        key: choice.key,
+        id: choice.entityId,
+        label: choice.label,
+        value: rewrittenToken.value,
+      };
+      selectedChoices.set(
+        getTypedSearchTokenIdentity(selectedChoice.key, rewrittenToken.start, rewrittenToken.end, rewrittenToken.raw),
+        selectedChoice,
+      );
+    }
+
+    applyParsedState(parsed);
+    activeInlineToken = undefined;
+    resetLiveTypedSearchSuggestions();
+    await tick();
+    input?.focus();
+    input?.setSelectionRange(nextCaret, nextCaret);
+  }
+
   const submitSearch = async (term: string, saveTerm = true) => {
-    validationMessage = undefined;
-    commitChoices = [];
-
     const parsed = parseTypedSearch(term);
+    applyParsedState(parsed);
     if (parsed.issues.length > 0) {
-      validationMessage = parsed.issues[0].message;
+      typedSearchIssues = parsed.issues;
       openDropdown();
       return;
     }
 
-    isLoadingInlineChoices = true;
-    const result = await resolveTypedSearchFilters(parsed, selectedChoices);
-    isLoadingInlineChoices = false;
+    const result = await resolveTypedSearchFilters(parsed, { selectedChoices });
     if (!result.ok) {
-      validationMessage = result.issues[0]?.message;
-      commitChoices = result.choices;
+      typedSearchIssues = result.issues;
+      typedSearchChoices = result.choices;
+      typedSearchDisplayTokens = parsed.displayTokens.map((token) => {
+        const issue = result.issues.find((item) => item.raw === token.raw);
+        return issue ? { ...token, status: 'error' as const, issue } : token;
+      });
       openDropdown();
       return;
     }
 
+    typedSearchIssues = [];
+    typedSearchChoices = [];
     if (saveTerm) {
       saveSearchTerm(term);
     }
-    await handleSearch({ ...buildSearchPayload(parsed.queryText), ...result.filters });
+    await handleSearch({ ...buildSearchPayload(result.queryText), ...result.filters }, term);
   };
 
   const onSubmit = () => {
@@ -241,16 +393,13 @@
 
   const onClear = () => {
     value = '';
-    caret = 0;
-    validationMessage = undefined;
-    commitChoices = [];
-    selectedChoices.clear();
+    clearTypedSearchDraft();
     input?.focus();
   };
 
   const onEscape = () => {
-    validationMessage = undefined;
-    commitChoices = [];
+    typedSearchIssues = [];
+    typedSearchChoices = [];
     closeDropdown();
     closeSearchTypeDropdown();
   };
@@ -265,53 +414,56 @@
     }
   };
 
-  const onEnter = (event: KeyboardEvent) => {
-    if (selectedId) {
+  const onInputKeyDown = (event: KeyboardEvent) => {
+    if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && showInlineSuggestions) {
       event.preventDefault();
-      if (showInlineSuggestions) {
-        inlineSearchFilterBox?.selectActiveOption();
-      } else {
-        searchHistoryBox?.selectActiveOption();
+      event.stopPropagation();
+      inlineSearchFilterBox?.moveSelection(event.key === 'ArrowDown' ? 1 : -1);
+      return;
+    }
+    if (event.key === 'Enter' && showInlineSuggestions) {
+      if (inlineSearchFilterBox?.selectActiveOption()) {
+        event.preventDefault();
+        event.stopPropagation();
       }
+    } else if (event.key === 'Enter' && selectedId) {
+      event.preventDefault();
+      searchHistoryBox?.selectActiveOption();
     }
   };
 
   const onInput = (event: Event) => {
     caret = (event.currentTarget as HTMLInputElement).selectionStart ?? value.length;
-    validationMessage = undefined;
-    commitChoices = [];
     openDropdown();
     searchHistoryBox?.clearSelection();
     inlineSearchFilterBox?.clearSelection();
+    parseTypedSearchDraft();
   };
 
   const updateCaret = (event: Event) => {
     caret = (event.currentTarget as HTMLInputElement).selectionStart ?? value.length;
+    updateActiveTypedSearchToken();
   };
 
-  const selectInlineChoice = async (choice: TypedSearchChoice) => {
-    const parsed = parseTypedSearch(value, { mode: 'draft' });
-    const token =
-      parsed.tokens.find((item) => item.start === choice.tokenStart && item.end === choice.tokenEnd) ??
-      (activeInlineToken?.key === choice.key && activeInlineToken.value === choice.value
-        ? activeInlineToken
-        : undefined) ??
-      parsed.tokens.find((item) => item.key === choice.key && item.value === choice.value);
-    if (!token) {
+  const updateCaretAfterKeyUp = (event: KeyboardEvent) => {
+    if (
+      (event.key === 'ArrowDown' || event.key === 'ArrowUp') &&
+      liveTypedSearchStatus.status === 'ok' &&
+      liveTypedSearchStatus.items.length > 0
+    ) {
       return;
     }
+    updateCaret(event);
+  };
 
-    const rewritten = rewriteTypedSearchToken(value, token, { key: choice.key, value: choice.label });
-    value = rewritten.text;
-    caret = rewritten.caret;
-    if (choice.key === 'person' || choice.key === 'tag' || choice.key === 'camera') {
-      selectedChoices.set(typedSearchChoiceKey(choice.key, choice.label), choice);
-    }
-    validationMessage = undefined;
-    commitChoices = [];
-    await tick();
-    input?.focus();
-    input?.setSelectionRange(rewritten.caret, rewritten.caret);
+  const onCompositionStart = () => {
+    isComposing = true;
+    updateActiveTypedSearchToken();
+  };
+
+  const onCompositionEnd = (event: CompositionEvent) => {
+    isComposing = false;
+    updateCaret(event);
   };
 
   const openDropdown = () => {
@@ -321,6 +473,7 @@
   const closeDropdown = () => {
     showSuggestions = false;
     searchHistoryBox?.clearSelection();
+    inlineSearchFilterBox?.clearSelection();
   };
 
   const toggleSearchTypeDropdown = () => {
@@ -386,6 +539,7 @@
 
   onMount(() => {
     getSearchType();
+    parseTypedSearchDraft();
   });
 
   const searchTypes = [
@@ -434,7 +588,12 @@
         onfocus={openDropdown}
         oninput={onInput}
         onclick={updateCaret}
-        onkeyup={updateCaret}
+        onkeyup={updateCaretAfterKeyUp}
+        onselect={updateCaret}
+        onpointerup={updateCaret}
+        oncompositionstart={onCompositionStart}
+        oncompositionend={onCompositionEnd}
+        onkeydown={onInputKeyDown}
         role="combobox"
         aria-controls={listboxId}
         aria-activedescendant={selectedId ?? ''}
@@ -444,9 +603,8 @@
         use:shortcuts={[
           { shortcut: { key: 'Escape' }, onShortcut: onEscape },
           { shortcut: { ctrl: true, shift: true, key: 'k' }, onShortcut: onFilterClick },
-          { shortcut: { key: 'ArrowUp' }, onShortcut: () => onArrow(-1) },
-          { shortcut: { key: 'ArrowDown' }, onShortcut: () => onArrow(1) },
-          { shortcut: { key: 'Enter' }, onShortcut: onEnter, preventDefault: false },
+          { shortcut: { key: 'ArrowUp' }, onShortcut: () => !showInlineSuggestions && onArrow(-1) },
+          { shortcut: { key: 'ArrowDown' }, onShortcut: () => !showInlineSuggestions && onArrow(1) },
           { shortcut: { key: 'ArrowDown', alt: true }, onShortcut: openDropdown },
         ]}
       />
@@ -455,10 +613,12 @@
         bind:this={inlineSearchFilterBox}
         id={listboxId}
         isOpen={showSuggestions && showInlineSuggestions}
-        isLoading={isLoadingInlineChoices}
-        choices={inlineChoices}
-        message={inlineMessage}
-        onSelect={(choice) => handlePromiseError(selectInlineChoice(choice))}
+        status={liveTypedSearchStatus}
+        tokens={typedSearchDisplayTokens}
+        issues={typedSearchIssues}
+        choices={typedSearchChoices}
+        onSelectLive={(choice) => handlePromiseError(selectLiveTypedSearchChoice(choice))}
+        onSelectChoice={selectTypedSearchChoice}
         onActiveSelectionChange={(id) => (selectedId = id)}
       />
 

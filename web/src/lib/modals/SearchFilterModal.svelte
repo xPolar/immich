@@ -85,7 +85,7 @@
       },
       display: {
         isArchive: searchQuery.visibility === AssetVisibility.Archive,
-        isFavorite: searchQuery.isFavorite ?? false,
+        isFavorite: searchQuery.isFavorite,
         isNotInAlbum: 'isNotInAlbum' in searchQuery ? (searchQuery.isNotInAlbum ?? false) : false,
         isStacked: searchQuery.isStacked ?? false,
       },
@@ -113,7 +113,7 @@
       date: {},
       display: {
         isArchive: false,
-        isFavorite: false,
+        isFavorite: undefined,
         isNotInAlbum: false,
         isStacked: false,
       },
@@ -152,7 +152,7 @@
         ? asLocalTimeISO(filter.date.takenBefore.endOf('day') as DateTime<true>)
         : undefined,
       visibility: filter.display.isArchive ? AssetVisibility.Archive : undefined,
-      isFavorite: filter.display.isFavorite || undefined,
+      isFavorite: filter.display.isFavorite,
       isNotInAlbum: filter.display.isNotInAlbum || undefined,
       isStacked: filter.display.isStacked || undefined,
       personIds: filter.personIds.size > 0 ? [...filter.personIds] : undefined,

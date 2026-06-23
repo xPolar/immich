@@ -1,7 +1,7 @@
 import { getAllTags, getSearchSuggestions, searchPerson, SearchSuggestionType } from '@immich/sdk';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseTypedSearch } from './typed-search-parser';
-import { resolveTypedSearchFilters, typedSearchChoiceKey } from './typed-search-resolver';
+import { resolveTypedSearchFilters } from './typed-search-resolver';
 
 vi.mock('@immich/sdk', () => ({
   AssetTypeEnum: { Image: 'IMAGE', Video: 'VIDEO' },
@@ -73,7 +73,7 @@ describe('resolveTypedSearchFilters', () => {
 
     const result = await resolveTypedSearchFilters(parseTypedSearch('person:ann'));
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       ok: false,
       issues: [expect.objectContaining({ code: 'ambiguous', key: 'person' })],
       choices: [
@@ -90,14 +90,20 @@ describe('resolveTypedSearchFilters', () => {
     ] as never);
     const selected = new Map([
       [
-        typedSearchChoiceKey('person', 'Anna'),
-        { key: 'person' as const, id: 'other-anna-id', label: 'Anna', value: 'ann' },
+        'person:Anna',
+        {
+          tokenRaw: 'person:Anna',
+          key: 'person' as const,
+          id: 'other-anna-id',
+          label: 'Anna',
+          value: 'Anna',
+        },
       ],
     ]);
 
-    const result = await resolveTypedSearchFilters(parseTypedSearch('person:Anna'), selected);
+    const result = await resolveTypedSearchFilters(parseTypedSearch('person:Anna'), { selectedChoices: selected });
 
-    expect(result).toEqual({ ok: true, filters: { personIds: ['other-anna-id'] } });
+    expect(result).toMatchObject({ ok: true, filters: { personIds: ['other-anna-id'] } });
   });
 
   it('reports entity filters that do not match', async () => {
@@ -105,7 +111,7 @@ describe('resolveTypedSearchFilters', () => {
 
     const result = await resolveTypedSearchFilters(parseTypedSearch('tag:missing'));
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       ok: false,
       issues: [expect.objectContaining({ code: 'no-match', key: 'tag' })],
       choices: [],

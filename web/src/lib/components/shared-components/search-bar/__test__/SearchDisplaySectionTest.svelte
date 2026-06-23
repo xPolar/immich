@@ -5,7 +5,7 @@
   let filters: SearchDisplayFilters = $state({
     isNotInAlbum: false,
     isArchive: false,
-    isFavorite: false,
+    isFavorite: undefined,
     isStacked: false,
   });
 </script>

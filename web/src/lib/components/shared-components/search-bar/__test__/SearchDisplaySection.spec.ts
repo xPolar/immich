@@ -10,4 +10,17 @@ describe('SearchDisplaySection', () => {
 
     expect(checkbox).toBeChecked();
   });
+
+  it('supports filtering favorites and non-favorites', async () => {
+    const sut = render(SearchDisplaySectionTest);
+    const all = sut.getByRole('radio', { name: 'all' });
+    const favorites = sut.getByRole('radio', { name: 'favorites' });
+    const notFavorites = sut.getByRole('radio', { name: 'search_filter_not_favorites' });
+
+    expect(all).toBeChecked();
+    await fireEvent.click(notFavorites);
+    expect(notFavorites).toBeChecked();
+    await fireEvent.click(favorites);
+    expect(favorites).toBeChecked();
+  });
 });
