@@ -7,11 +7,28 @@
   import { searchStore } from '$lib/stores/search.svelte';
   import { handlePromiseError } from '$lib/utils';
   import { generateId } from '$lib/utils/generate-id';
+  import {
+    getLiveTypedSearchSuggestions,
+    isLiveTypedSearchToken,
+  } from '$lib/utils/typed-search/typed-search-live-suggestions';
+  import {
+    getActiveTypedSearchToken,
+    parseTypedSearch,
+    rewriteTypedSearchToken,
+    type TypedSearchTokenSpan,
+  } from '$lib/utils/typed-search/typed-search-parser';
+  import {
+    resolveTypedSearchFilters,
+    typedSearchChoiceKey,
+    type TypedSearchChoice,
+  } from '$lib/utils/typed-search/typed-search-resolver';
   import type { MetadataSearchDto, SmartSearchDto } from '@immich/sdk';
   import { Button, IconButton, modalManager } from '@immich/ui';
   import { mdiClose, mdiMagnify, mdiTune } from '@mdi/js';
   import { onDestroy, onMount, tick } from 'svelte';
   import { t } from 'svelte-i18n';
+  import { SvelteMap } from 'svelte/reactivity';
+  import InlineSearchFilterBox from './InlineSearchFilterBox.svelte';
   import SearchHistoryBox from './SearchHistoryBox.svelte';
 
   type Props = {
@@ -26,18 +43,71 @@
 
   let input = $state<HTMLInputElement>();
   let searchHistoryBox = $state<ReturnType<typeof SearchHistoryBox>>();
+  let inlineSearchFilterBox = $state<ReturnType<typeof InlineSearchFilterBox>>();
   let showSuggestions = $state(false);
-  let isSearchSuggestions = $state(false);
+  let hasHistorySuggestions = $state(false);
   let selectedId: string | undefined = $state();
   let close: (() => Promise<void>) | undefined;
   let showSearchTypeDropdown = $state(false);
   let currentSearchType = $state('smart');
+  let caret = $state(0);
+  let activeInlineToken: TypedSearchTokenSpan | undefined = $state();
+  let liveChoices: TypedSearchChoice[] = $state([]);
+  let commitChoices: TypedSearchChoice[] = $state([]);
+  let liveMessage: string | undefined = $state();
+  let validationMessage: string | undefined = $state();
+  let isLoadingInlineChoices = $state(false);
+  const selectedChoices = new SvelteMap<string, TypedSearchChoice>();
+
+  let inlineChoices = $derived(commitChoices.length > 0 ? commitChoices : liveChoices);
+  let inlineMessage = $derived(validationMessage ?? liveMessage);
+  let showInlineSuggestions = $derived(Boolean(activeInlineToken || validationMessage || commitChoices.length > 0));
+  let isSearchSuggestions = $derived(showInlineSuggestions || hasHistorySuggestions);
 
   const listboxId = generateId();
   const searchTypeId = generateId();
 
   onDestroy(() => {
     searchStore.isSearchEnabled = false;
+  });
+
+  $effect(() => {
+    const parsed = parseTypedSearch(value, { mode: 'draft' });
+    const token = getActiveTypedSearchToken(parsed, caret);
+    const activeToken = isLiveTypedSearchToken(token) ? token : undefined;
+    activeInlineToken = activeToken;
+    liveChoices = [];
+    liveMessage = undefined;
+
+    if (!activeToken) {
+      isLoadingInlineChoices = false;
+      return;
+    }
+
+    const controller = new AbortController();
+    isLoadingInlineChoices = true;
+    const timeout = setTimeout(() => {
+      getLiveTypedSearchSuggestions(parsed, activeToken, controller.signal)
+        .then((choices) => {
+          liveChoices = choices;
+          liveMessage = choices.length === 0 ? `No matching ${activeToken.key} found` : undefined;
+        })
+        .catch((error: unknown) => {
+          if (!(error instanceof Error && error.name === 'AbortError')) {
+            liveMessage = error instanceof Error ? error.message : 'Unable to load filter suggestions';
+          }
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) {
+            isLoadingInlineChoices = false;
+          }
+        });
+    }, 150);
+
+    return () => {
+      clearTimeout(timeout);
+      controller.abort();
+    };
   });
 
   const handleSearch = async (payload: SmartSearchDto | MetadataSearchDto) => {
@@ -77,33 +147,37 @@
   };
 
   const buildSearchPayload = (term: string): SmartSearchDto | MetadataSearchDto => {
+    const normalizedTerm = term.trim();
+    if (!normalizedTerm) {
+      return {};
+    }
+
     const searchType = getSearchType();
     switch (searchType) {
       case 'smart': {
-        return { query: term };
+        return { query: normalizedTerm };
       }
       case 'metadata': {
-        return { originalFileName: term };
+        return { originalFileName: normalizedTerm };
       }
       case 'description': {
-        return { description: term };
+        return { description: normalizedTerm };
       }
       case 'fullPath': {
-        const normalizedTerm = term.trim();
-        return normalizedTerm ? { originalPath: normalizedTerm } : {};
+        return { originalPath: normalizedTerm };
       }
       case 'ocr': {
-        return { ocr: term };
+        return { ocr: normalizedTerm };
       }
       default: {
-        return { query: term };
+        return { query: normalizedTerm };
       }
     }
   };
 
   const onHistoryTermClick = async (searchTerm: string) => {
     value = searchTerm;
-    await handleSearch(buildSearchPayload(searchTerm));
+    await submitSearch(searchTerm, false);
   };
 
   const onFilterClick = async () => {
@@ -134,17 +208,49 @@
     await handleSearch(searchResult);
   };
 
+  const submitSearch = async (term: string, saveTerm = true) => {
+    validationMessage = undefined;
+    commitChoices = [];
+
+    const parsed = parseTypedSearch(term);
+    if (parsed.issues.length > 0) {
+      validationMessage = parsed.issues[0].message;
+      openDropdown();
+      return;
+    }
+
+    isLoadingInlineChoices = true;
+    const result = await resolveTypedSearchFilters(parsed, selectedChoices);
+    isLoadingInlineChoices = false;
+    if (!result.ok) {
+      validationMessage = result.issues[0]?.message;
+      commitChoices = result.choices;
+      openDropdown();
+      return;
+    }
+
+    if (saveTerm) {
+      saveSearchTerm(term);
+    }
+    await handleSearch({ ...buildSearchPayload(parsed.queryText), ...result.filters });
+  };
+
   const onSubmit = () => {
-    handlePromiseError(handleSearch(buildSearchPayload(value)));
-    saveSearchTerm(value);
+    handlePromiseError(submitSearch(value));
   };
 
   const onClear = () => {
     value = '';
+    caret = 0;
+    validationMessage = undefined;
+    commitChoices = [];
+    selectedChoices.clear();
     input?.focus();
   };
 
   const onEscape = () => {
+    validationMessage = undefined;
+    commitChoices = [];
     closeDropdown();
     closeSearchTypeDropdown();
   };
@@ -152,19 +258,60 @@
   const onArrow = async (direction: 1 | -1) => {
     openDropdown();
     await tick();
-    searchHistoryBox?.moveSelection(direction);
+    if (showInlineSuggestions) {
+      inlineSearchFilterBox?.moveSelection(direction);
+    } else {
+      searchHistoryBox?.moveSelection(direction);
+    }
   };
 
   const onEnter = (event: KeyboardEvent) => {
     if (selectedId) {
       event.preventDefault();
-      searchHistoryBox?.selectActiveOption();
+      if (showInlineSuggestions) {
+        inlineSearchFilterBox?.selectActiveOption();
+      } else {
+        searchHistoryBox?.selectActiveOption();
+      }
     }
   };
 
-  const onInput = () => {
+  const onInput = (event: Event) => {
+    caret = (event.currentTarget as HTMLInputElement).selectionStart ?? value.length;
+    validationMessage = undefined;
+    commitChoices = [];
     openDropdown();
     searchHistoryBox?.clearSelection();
+    inlineSearchFilterBox?.clearSelection();
+  };
+
+  const updateCaret = (event: Event) => {
+    caret = (event.currentTarget as HTMLInputElement).selectionStart ?? value.length;
+  };
+
+  const selectInlineChoice = async (choice: TypedSearchChoice) => {
+    const parsed = parseTypedSearch(value, { mode: 'draft' });
+    const token =
+      parsed.tokens.find((item) => item.start === choice.tokenStart && item.end === choice.tokenEnd) ??
+      (activeInlineToken?.key === choice.key && activeInlineToken.value === choice.value
+        ? activeInlineToken
+        : undefined) ??
+      parsed.tokens.find((item) => item.key === choice.key && item.value === choice.value);
+    if (!token) {
+      return;
+    }
+
+    const rewritten = rewriteTypedSearchToken(value, token, { key: choice.key, value: choice.label });
+    value = rewritten.text;
+    caret = rewritten.caret;
+    if (choice.key === 'person' || choice.key === 'tag' || choice.key === 'camera') {
+      selectedChoices.set(typedSearchChoiceKey(choice.key, choice.label), choice);
+    }
+    validationMessage = undefined;
+    commitChoices = [];
+    await tick();
+    input?.focus();
+    input?.setSelectionRange(rewritten.caret, rewritten.caret);
   };
 
   const openDropdown = () => {
@@ -286,6 +433,8 @@
         bind:this={input}
         onfocus={openDropdown}
         oninput={onInput}
+        onclick={updateCaret}
+        onkeyup={updateCaret}
         role="combobox"
         aria-controls={listboxId}
         aria-activedescendant={selectedId ?? ''}
@@ -302,13 +451,23 @@
         ]}
       />
 
-      <!-- SEARCH HISTORY BOX -->
+      <InlineSearchFilterBox
+        bind:this={inlineSearchFilterBox}
+        id={listboxId}
+        isOpen={showSuggestions && showInlineSuggestions}
+        isLoading={isLoadingInlineChoices}
+        choices={inlineChoices}
+        message={inlineMessage}
+        onSelect={(choice) => handlePromiseError(selectInlineChoice(choice))}
+        onActiveSelectionChange={(id) => (selectedId = id)}
+      />
+
       <SearchHistoryBox
         bind:this={searchHistoryBox}
-        bind:isSearchSuggestions
+        bind:isSearchSuggestions={hasHistorySuggestions}
         id={listboxId}
         searchQuery={value}
-        isOpen={showSuggestions}
+        isOpen={showSuggestions && !showInlineSuggestions}
         onClearAllSearchTerms={clearAllSearchTerms}
         onClearSearchTerm={(searchTerm) => clearSearchTerm(searchTerm)}
         onSelectSearchTerm={(searchTerm) => handlePromiseError(onHistoryTermClick(searchTerm))}
