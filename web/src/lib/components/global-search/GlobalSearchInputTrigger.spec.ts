@@ -27,6 +27,9 @@ const { manager } = vi.hoisted(() => ({
     removeRecent: vi.fn(),
     setMode: vi.fn(),
     cycleMode: vi.fn(),
+    setInputCaret: vi.fn((caret: number | null) => {
+      manager.caret = caret ?? manager.query.length;
+    }),
     caret: 0,
   },
 }));
@@ -96,7 +99,7 @@ describe('GlobalSearchInputTrigger', () => {
     const input = screen.getByRole('textbox') as HTMLInputElement;
     input.setSelectionRange(7, 7);
     await fireEvent.keyUp(input, { key: 'ArrowLeft' });
-    expect(manager.caret).toBe(7);
+    expect(manager.setInputCaret).toHaveBeenCalledWith(7);
   });
 
   it('keeps the keyboard-active result visible', async () => {

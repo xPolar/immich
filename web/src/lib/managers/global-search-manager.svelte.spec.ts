@@ -165,6 +165,33 @@ describe('GlobalSearchManager keyboard state', () => {
     );
   });
 
+  it('clears and refreshes typed suggestions when the caret changes tokens', async () => {
+    vi.useFakeTimers();
+    manager.query = 'person:alice tag:trip';
+    manager.caret = 7;
+    manager.typedSuggestions = {
+      status: 'ok',
+      key: 'person',
+      total: 1,
+      items: [
+        {
+          id: 'alice',
+          key: 'person',
+          label: 'Alice',
+          value: 'Alice',
+          tokenStart: 0,
+          tokenEnd: 12,
+        },
+      ],
+    };
+
+    manager.setInputCaret(manager.query.length);
+    expect(manager.typedSuggestions).toEqual({ status: 'idle' });
+    await vi.advanceTimersByTimeAsync(150);
+    expect(manager.typedSuggestions.status).not.toBe('idle');
+    vi.useRealTimers();
+  });
+
   it('replays query recents immediately and removes highlighted recents', async () => {
     const activateSearch = vi.spyOn(manager, 'activateSearch').mockResolvedValue();
     const recent = {

@@ -24,6 +24,7 @@ const { manager } = vi.hoisted(() => ({
     setQuery: vi.fn(),
     cycleMode: vi.fn(),
     setMode: vi.fn(),
+    setInputCaret: vi.fn(),
     move: vi.fn(),
     moveTo: vi.fn(),
     activate: vi.fn(),

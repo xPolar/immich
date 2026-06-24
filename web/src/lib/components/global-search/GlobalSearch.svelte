@@ -279,7 +279,10 @@
             const target = event.currentTarget;
             manager.setQuery(target.value, target.selectionStart ?? target.value.length);
           }}
-          onkeyup={(event) => (manager.caret = event.currentTarget.selectionStart ?? manager.query.length)}
+          onclick={(event) => manager.setInputCaret(event.currentTarget.selectionStart)}
+          onkeyup={(event) => manager.setInputCaret(event.currentTarget.selectionStart)}
+          onpointerup={(event) => manager.setInputCaret(event.currentTarget.selectionStart)}
+          onselect={(event) => manager.setInputCaret(event.currentTarget.selectionStart)}
           onkeydown={inputKeydown}
         />
         <IconButton

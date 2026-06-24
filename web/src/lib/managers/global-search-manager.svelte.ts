@@ -106,6 +106,9 @@ export class GlobalSearchManager {
   activeResult = $derived(this.results[this.activeIndex]);
   private debounce?: ReturnType<typeof setTimeout>;
   private controller?: AbortController;
+  private caretSuggestionTimer?: ReturnType<typeof setTimeout>;
+  private caretSuggestionController?: AbortController;
+  private typedSuggestionRevision = 0;
   private restoreFocus?: HTMLElement;
 
   open(presentation: GlobalSearchPresentation = 'modal', trigger?: HTMLElement, initialQuery = '') {
@@ -123,7 +126,9 @@ export class GlobalSearchManager {
   close(restoreFocus = this.presentation === 'modal') {
     this.isOpen = false;
     this.controller?.abort();
+    this.caretSuggestionController?.abort();
     clearTimeout(this.debounce);
+    clearTimeout(this.caretSuggestionTimer);
     this.pendingProviders = [];
     this.query = '';
     this.typedSuggestions = { status: 'idle' };
@@ -146,6 +151,9 @@ export class GlobalSearchManager {
   setQuery(value: string, caret = value.length) {
     this.query = value;
     this.caret = caret;
+    this.typedSuggestionRevision++;
+    this.caretSuggestionController?.abort();
+    clearTimeout(this.caretSuggestionTimer);
     const parsedScope = parseGlobalSearchScope(value);
     this.scope = parsedScope.scope;
     this.activeIndex = 0;
@@ -159,6 +167,26 @@ export class GlobalSearchManager {
     }
     this.markPending(parsedScope.scope);
     this.debounce = setTimeout(() => void this.runProviders(parsedScope.query, parsedScope.scope), 150);
+  }
+
+  setInputCaret(caret: number | null) {
+    const nextCaret = caret ?? this.query.length;
+    if (nextCaret === this.caret) {
+      return;
+    }
+
+    this.caret = nextCaret;
+    const revision = ++this.typedSuggestionRevision;
+    this.typedSuggestions = { status: 'idle' };
+    this.typedChoices = [];
+    this.caretSuggestionController?.abort();
+    clearTimeout(this.caretSuggestionTimer);
+    this.caretSuggestionTimer = setTimeout(() => {
+      const controller = new AbortController();
+      this.caretSuggestionController = controller;
+      const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(providerTimeout)]);
+      void this.runTypedSuggestions(signal, revision);
+    }, 150);
   }
 
   cycleMode() {
@@ -425,7 +453,10 @@ export class GlobalSearchManager {
       }
       // No default
     }
-    tasks.push(this.runProvider('typed', controller, (signal) => this.runTypedSuggestions(signal)));
+    const typedSuggestionRevision = this.typedSuggestionRevision;
+    tasks.push(
+      this.runProvider('typed', controller, (signal) => this.runTypedSuggestions(signal, typedSuggestionRevision)),
+    );
     await Promise.allSettled(tasks);
   }
 
@@ -560,18 +591,24 @@ export class GlobalSearchManager {
     }
   }
 
-  private async runTypedSuggestions(signal: AbortSignal) {
+  private async runTypedSuggestions(signal: AbortSignal, revision = this.typedSuggestionRevision) {
     const parsed = parseTypedSearch(this.query);
     const token = getActiveTypedSearchToken(parsed, this.caret);
+    if (revision !== this.typedSuggestionRevision) {
+      return;
+    }
     if (!isLiveTypedSearchToken(token)) {
       this.typedSuggestions = { status: 'idle' };
       return;
     }
     this.typedSuggestions = { status: 'loading', key: token.key };
     try {
-      this.typedSuggestions = await resolveLiveTypedSearchSuggestions({ parsed, activeToken: token, signal });
+      const status = await resolveLiveTypedSearchSuggestions({ parsed, activeToken: token, signal });
+      if (revision === this.typedSuggestionRevision) {
+        this.typedSuggestions = status;
+      }
     } catch (error) {
-      if (!signal.aborted) {
+      if (!signal.aborted && revision === this.typedSuggestionRevision) {
         this.typedSuggestions = {
           status: 'error',
           key: token.key,

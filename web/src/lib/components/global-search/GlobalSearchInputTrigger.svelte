@@ -35,7 +35,7 @@
   });
 
   function syncCaret(event: Event) {
-    manager.caret = (event.currentTarget as HTMLInputElement).selectionStart ?? manager.query.length;
+    manager.setInputCaret((event.currentTarget as HTMLInputElement).selectionStart);
   }
 
   function keydown(event: KeyboardEvent) {
