@@ -31,6 +31,7 @@
   import { handleError } from '$lib/utils/handle-error';
   import { isAlbumsRoute, isPeopleRoute } from '$lib/utils/navigation';
   import { toTimelineAsset } from '$lib/utils/timeline-util';
+  import { getTypedSearchDisplayText } from '$lib/utils/typed-search/typed-search-display-cache';
   import {
     type AlbumResponseDto,
     type AssetResponseDto,
@@ -65,6 +66,9 @@
   let searchQuery = $derived(page.url.searchParams.get(QueryParameter.QUERY));
   let smartSearchEnabled = $derived(featureFlagsManager.value.smartSearch);
   let terms = $derived<SearchTerms>(searchQuery ? JSON.parse(searchQuery) : {});
+  let searchDisplayValue = $derived(
+    getTypedSearchDisplayText(page.url.pathname + page.url.search) ?? terms?.query ?? '',
+  );
   let searchTermKeys = $derived(getObjectKeys(terms));
 
   $effect(() => {
@@ -389,7 +393,7 @@
       <div class="fixed inset-s-0 top-0 z-2 w-full">
         <ControlAppBar onClose={() => goto(previousRoute)} backIcon={mdiArrowLeft}>
           <div class="mx-auto w-full max-w-2xl pe-2">
-            <SearchBar grayTheme={false} value={terms?.query ?? ''} searchQuery={terms} />
+            <SearchBar grayTheme={false} value={searchDisplayValue} searchQuery={terms} />
           </div>
         </ControlAppBar>
       </div>

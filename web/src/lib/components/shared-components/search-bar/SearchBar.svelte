@@ -4,14 +4,39 @@
   import { shortcuts } from '$lib/actions/shortcut';
   import SearchFilterModal from '$lib/modals/SearchFilterModal.svelte';
   import { Route } from '$lib/route';
+  import { lang } from '$lib/stores/preferences.store';
   import { searchStore } from '$lib/stores/search.svelte';
   import { handlePromiseError } from '$lib/utils';
   import { generateId } from '$lib/utils/generate-id';
-  import type { MetadataSearchDto, SmartSearchDto } from '@immich/sdk';
+  import { storeTypedSearchDisplayText } from '$lib/utils/typed-search/typed-search-display-cache';
+  import {
+    isLiveTypedSearchToken,
+    resolveLiveTypedSearchSuggestions,
+    type LiveTypedSearchChoice,
+    type LiveTypedSearchStatus,
+    type LiveTypedSearchToken,
+  } from '$lib/utils/typed-search/typed-search-live-suggestions';
+  import {
+    getActiveTypedSearchToken,
+    parseTypedSearch,
+    rewriteTypedSearchToken,
+    type TypedSearchDisplayToken,
+    type TypedSearchIssue,
+    type TypedSearchParseResult,
+  } from '$lib/utils/typed-search/typed-search-parser';
+  import {
+    resolveTypedSearchPhotoSuggestions,
+    type TypedSearchPhotoMode,
+    type TypedSearchPhotoStatus,
+  } from '$lib/utils/typed-search/typed-search-photo-suggestions';
+  import { resolveTypedSearchFilters, type TypedSearchChoice } from '$lib/utils/typed-search/typed-search-resolver';
+  import type { AssetResponseDto, MetadataSearchDto, SmartSearchDto } from '@immich/sdk';
   import { Button, IconButton, modalManager } from '@immich/ui';
   import { mdiClose, mdiMagnify, mdiTune } from '@mdi/js';
   import { onDestroy, onMount, tick } from 'svelte';
   import { t } from 'svelte-i18n';
+  import { SvelteMap } from 'svelte/reactivity';
+  import InlineSearchFilterBox from './InlineSearchFilterBox.svelte';
   import SearchHistoryBox from './SearchHistoryBox.svelte';
 
   type Props = {
@@ -26,24 +51,56 @@
 
   let input = $state<HTMLInputElement>();
   let searchHistoryBox = $state<ReturnType<typeof SearchHistoryBox>>();
+  let inlineSearchFilterBox = $state<ReturnType<typeof InlineSearchFilterBox>>();
   let showSuggestions = $state(false);
-  let isSearchSuggestions = $state(false);
+  let hasHistorySuggestions = $state(false);
   let selectedId: string | undefined = $state();
   let close: (() => Promise<void>) | undefined;
   let showSearchTypeDropdown = $state(false);
-  let currentSearchType = $state('smart');
+  let currentSearchType = $state<TypedSearchPhotoMode>('smart');
+  let typedSearchDisplayTokens = $state<TypedSearchDisplayToken[]>([]);
+  let typedSearchIssues = $state<TypedSearchIssue[]>([]);
+  let typedSearchChoices = $state<TypedSearchChoice[]>([]);
+  const selectedChoices = new SvelteMap<string, TypedSearchChoice>();
+  let activeInlineToken = $state<LiveTypedSearchToken>();
+  let liveTypedSearchStatus = $state<LiveTypedSearchStatus>({ status: 'idle' });
+  let caret = $state<number | null>(0);
+  let isComposing = $state(false);
+  let skipNextLiveSuggestionsForCaret: number | null = null;
+  let liveSuggestionTimer: ReturnType<typeof setTimeout> | undefined;
+  let liveSuggestionController: AbortController | undefined;
+  let liveSuggestionRequestId = 0;
+  let photoSuggestionTimer: ReturnType<typeof setTimeout> | undefined;
+  let photoSuggestionController: AbortController | undefined;
+  let photoSuggestionRequestId = 0;
+  let photoSearchStatus = $state<TypedSearchPhotoStatus>({ status: 'idle' });
+
+  let showInlineSuggestions = $derived(
+    typedSearchDisplayTokens.length > 0 ||
+      typedSearchIssues.length > 0 ||
+      typedSearchChoices.length > 0 ||
+      liveTypedSearchStatus.status !== 'idle' ||
+      photoSearchStatus.status !== 'idle',
+  );
+  let isSearchSuggestions = $derived(showInlineSuggestions || hasHistorySuggestions);
 
   const listboxId = generateId();
   const searchTypeId = generateId();
 
   onDestroy(() => {
     searchStore.isSearchEnabled = false;
+    clearLiveSuggestionRequest();
+    clearPhotoSuggestionRequest();
   });
 
-  const handleSearch = async (payload: SmartSearchDto | MetadataSearchDto) => {
+  const handleSearch = async (payload: SmartSearchDto | MetadataSearchDto, displayText?: string) => {
     closeDropdown();
     searchStore.isSearchEnabled = false;
-    await goto(Route.search(payload));
+    const destination = Route.search(payload);
+    if (displayText) {
+      storeTypedSearchDisplayText(destination, displayText);
+    }
+    await goto(destination);
   };
 
   const clearSearchTerm = (searchTerm: string) => {
@@ -77,33 +134,37 @@
   };
 
   const buildSearchPayload = (term: string): SmartSearchDto | MetadataSearchDto => {
+    const normalizedTerm = term.trim();
+    if (!normalizedTerm) {
+      return {};
+    }
+
     const searchType = getSearchType();
     switch (searchType) {
       case 'smart': {
-        return { query: term };
+        return { query: normalizedTerm };
       }
       case 'metadata': {
-        return { originalFileName: term };
+        return { originalFileName: normalizedTerm };
       }
       case 'description': {
-        return { description: term };
+        return { description: normalizedTerm };
       }
       case 'fullPath': {
-        const normalizedTerm = term.trim();
-        return normalizedTerm ? { originalPath: normalizedTerm } : {};
+        return { originalPath: normalizedTerm };
       }
       case 'ocr': {
-        return { ocr: term };
+        return { ocr: normalizedTerm };
       }
       default: {
-        return { query: term };
+        return { query: normalizedTerm };
       }
     }
   };
 
   const onHistoryTermClick = async (searchTerm: string) => {
     value = searchTerm;
-    await handleSearch(buildSearchPayload(searchTerm));
+    await submitSearch(searchTerm, false);
   };
 
   const onFilterClick = async () => {
@@ -134,17 +195,319 @@
     await handleSearch(searchResult);
   };
 
+  function applyParsedState(parsed: TypedSearchParseResult) {
+    typedSearchDisplayTokens = parsed.displayTokens.map((displayToken) => {
+      const selected =
+        (displayToken.identity && selectedChoices.get(displayToken.identity)?.tokenRaw === displayToken.raw
+          ? selectedChoices.get(displayToken.identity)
+          : undefined) ??
+        (displayToken.identity
+          ? undefined
+          : [...selectedChoices.values()].find((choice) => choice.tokenRaw === displayToken.raw));
+      return selected && (displayToken.key === 'person' || displayToken.key === 'tag')
+        ? { ...displayToken, value: selected.label, status: 'resolved-entity' as const }
+        : displayToken;
+    });
+    typedSearchIssues = [];
+    typedSearchChoices = [];
+
+    for (const key of selectedChoices.keys()) {
+      if (
+        !parsed.resolutionTokens.some(
+          (token) => token.raw === key || token.identity === key || token.stableIdentity === key,
+        )
+      ) {
+        selectedChoices.delete(key);
+      }
+    }
+  }
+
+  function parseTypedSearchDraft() {
+    const parsed = parseTypedSearch(value, { mode: 'draft' });
+    applyParsedState(parsed);
+    updateActiveTypedSearchToken(parsed);
+    schedulePhotoSearchSuggestions(parsed);
+    return parsed;
+  }
+
+  function clearTypedSearchDraft() {
+    typedSearchDisplayTokens = [];
+    typedSearchIssues = [];
+    typedSearchChoices = [];
+    selectedChoices.clear();
+    activeInlineToken = undefined;
+    caret = 0;
+    isComposing = false;
+    skipNextLiveSuggestionsForCaret = null;
+    resetLiveTypedSearchSuggestions();
+    resetPhotoSearchSuggestions();
+  }
+
+  function clearLiveSuggestionRequest() {
+    if (liveSuggestionTimer) {
+      clearTimeout(liveSuggestionTimer);
+      liveSuggestionTimer = undefined;
+    }
+    liveSuggestionController?.abort();
+    liveSuggestionController = undefined;
+  }
+
+  function resetLiveTypedSearchSuggestions() {
+    clearLiveSuggestionRequest();
+    liveSuggestionRequestId++;
+    liveTypedSearchStatus = { status: 'idle' };
+  }
+
+  function clearPhotoSuggestionRequest() {
+    if (photoSuggestionTimer) {
+      clearTimeout(photoSuggestionTimer);
+      photoSuggestionTimer = undefined;
+    }
+    photoSuggestionController?.abort();
+    photoSuggestionController = undefined;
+  }
+
+  function resetPhotoSearchSuggestions() {
+    clearPhotoSuggestionRequest();
+    photoSuggestionRequestId++;
+    photoSearchStatus = { status: 'idle' };
+  }
+
+  function schedulePhotoSearchSuggestions(parsed: TypedSearchParseResult) {
+    const query = parsed.queryText.trim();
+    const hasFilters = parsed.scalarTokens.length > 0 || parsed.resolutionTokens.length > 0;
+    if ((!query && !hasFilters) || isComposing || parsed.issues.length > 0) {
+      resetPhotoSearchSuggestions();
+      return;
+    }
+
+    clearPhotoSuggestionRequest();
+    const requestId = ++photoSuggestionRequestId;
+    const mode = currentSearchType;
+    photoSearchStatus = { status: 'loading' };
+    photoSuggestionTimer = setTimeout(() => {
+      photoSuggestionTimer = undefined;
+      const controller = new AbortController();
+      photoSuggestionController = controller;
+      const timeoutSignal = AbortSignal.timeout(15_000);
+      const signal = AbortSignal.any([controller.signal, timeoutSignal]);
+
+      resolveTypedSearchFilters(parsed, { selectedChoices, signal })
+        .then((resolved) => {
+          if (!resolved.ok) {
+            if (resolved.issues.some((issue) => issue.code === 'no-match')) {
+              return { status: 'empty' as const };
+            }
+            return { status: 'idle' as const };
+          }
+          return resolveTypedSearchPhotoSuggestions({
+            query: resolved.queryText,
+            mode,
+            filters: resolved.filters,
+            language: $lang,
+            signal,
+          });
+        })
+        .then((status) => {
+          if (requestId !== photoSuggestionRequestId) {
+            return;
+          }
+          if (timeoutSignal.aborted) {
+            photoSearchStatus = { status: 'timeout' };
+          } else if (!signal.aborted) {
+            photoSearchStatus = status;
+          }
+        })
+        .catch((error: unknown) => {
+          if (requestId !== photoSuggestionRequestId) {
+            return;
+          }
+          if (timeoutSignal.aborted) {
+            photoSearchStatus = { status: 'timeout' };
+          } else if (!(error instanceof Error && error.name === 'AbortError')) {
+            photoSearchStatus = {
+              status: 'error',
+              message: error instanceof Error ? error.message : 'Unable to load photo matches',
+            };
+          }
+        })
+        .finally(() => {
+          if (photoSuggestionController === controller) {
+            photoSuggestionController = undefined;
+          }
+        });
+    }, 200);
+  }
+
+  function scheduleLiveTypedSearchSuggestions(parsed: TypedSearchParseResult) {
+    if (!activeInlineToken || isComposing) {
+      resetLiveTypedSearchSuggestions();
+      return;
+    }
+    if (skipNextLiveSuggestionsForCaret === caret) {
+      skipNextLiveSuggestionsForCaret = null;
+      resetLiveTypedSearchSuggestions();
+      return;
+    }
+
+    clearLiveSuggestionRequest();
+    const requestId = ++liveSuggestionRequestId;
+    const token = activeInlineToken;
+    liveTypedSearchStatus = { status: 'loading', key: token.key };
+    liveSuggestionTimer = setTimeout(() => {
+      liveSuggestionTimer = undefined;
+      const controller = new AbortController();
+      liveSuggestionController = controller;
+      const timeoutSignal = AbortSignal.timeout(15_000);
+      const signal = AbortSignal.any([controller.signal, timeoutSignal]);
+
+      resolveLiveTypedSearchSuggestions({ parsed, activeToken: token, signal })
+        .then((status) => {
+          if (requestId !== liveSuggestionRequestId) {
+            return;
+          }
+          if (timeoutSignal.aborted) {
+            liveTypedSearchStatus = { status: 'timeout', key: token.key };
+          } else if (!signal.aborted) {
+            liveTypedSearchStatus = status;
+          }
+        })
+        .catch((error: unknown) => {
+          if (requestId !== liveSuggestionRequestId) {
+            return;
+          }
+          if (timeoutSignal.aborted) {
+            liveTypedSearchStatus = { status: 'timeout', key: token.key };
+          } else if (!(error instanceof Error && error.name === 'AbortError')) {
+            liveTypedSearchStatus = {
+              status: 'error',
+              key: token.key,
+              message: error instanceof Error ? error.message : 'Unable to load filter matches',
+            };
+          }
+        })
+        .finally(() => {
+          if (liveSuggestionController === controller) {
+            liveSuggestionController = undefined;
+          }
+        });
+    }, 150);
+  }
+
+  function updateActiveTypedSearchToken(parsed = parseTypedSearch(value, { mode: 'draft' })) {
+    if (isComposing) {
+      activeInlineToken = undefined;
+      resetLiveTypedSearchSuggestions();
+      return;
+    }
+
+    const token = getActiveTypedSearchToken(parsed, caret);
+    activeInlineToken = isLiveTypedSearchToken(token) && token.issue?.code !== 'unterminated-quote' ? token : undefined;
+    scheduleLiveTypedSearchSuggestions(parsed);
+  }
+
+  function selectTypedSearchChoice(choice: TypedSearchChoice) {
+    selectedChoices.set(choice.tokenIdentity, choice);
+    typedSearchIssues = typedSearchIssues.filter((issue) => issue.tokenIdentity !== choice.tokenIdentity);
+    typedSearchChoices = typedSearchChoices.filter((item) => item.tokenIdentity !== choice.tokenIdentity);
+    typedSearchDisplayTokens = typedSearchDisplayTokens.map((token) =>
+      token.identity === choice.tokenIdentity
+        ? { ...token, value: choice.label, status: 'resolved-entity' as const }
+        : token,
+    );
+    schedulePhotoSearchSuggestions(parseTypedSearch(value, { mode: 'draft' }));
+  }
+
+  async function selectLiveTypedSearchChoice(choice: LiveTypedSearchChoice) {
+    const token = activeInlineToken;
+    if (!token) {
+      return;
+    }
+
+    const { text, caret: rewrittenCaret } = rewriteTypedSearchToken(value, token, {
+      key: choice.key,
+      value: choice.value,
+    });
+    const needsSeparator = text[rewrittenCaret] === undefined || !/\s/.test(text[rewrittenCaret]);
+    value = needsSeparator ? `${text.slice(0, rewrittenCaret)} ${text.slice(rewrittenCaret)}` : text;
+    const nextCaret = needsSeparator ? rewrittenCaret + 1 : rewrittenCaret;
+    caret = nextCaret;
+    skipNextLiveSuggestionsForCaret = nextCaret;
+
+    const parsed = parseTypedSearch(value, { mode: 'draft' });
+    const rewrittenToken = getActiveTypedSearchToken(parsed, rewrittenCaret);
+    if (
+      rewrittenToken &&
+      (choice.key === 'person' || choice.key === 'tag') &&
+      choice.entityId &&
+      rewrittenToken.key === choice.key
+    ) {
+      const selectedChoice: TypedSearchChoice = {
+        tokenRaw: rewrittenToken.raw,
+        key: choice.key,
+        id: choice.entityId,
+        label: choice.label,
+        value: rewrittenToken.value,
+        tokenIdentity: `${choice.key}#0`,
+      };
+      const resolvedToken = parsed.resolutionTokens.find(
+        (item) => item.start === rewrittenToken.start && item.end === rewrittenToken.end,
+      );
+      selectedChoice.tokenIdentity = resolvedToken?.stableIdentity ?? selectedChoice.tokenIdentity;
+      selectedChoices.set(selectedChoice.tokenIdentity, selectedChoice);
+    }
+
+    applyParsedState(parsed);
+    schedulePhotoSearchSuggestions(parsed);
+    activeInlineToken = undefined;
+    resetLiveTypedSearchSuggestions();
+    await tick();
+    input?.focus();
+    input?.setSelectionRange(nextCaret, nextCaret);
+  }
+
+  const submitSearch = async (term: string, saveTerm = true) => {
+    const parsed = parseTypedSearch(term);
+    applyParsedState(parsed);
+    if (parsed.issues.length > 0) {
+      typedSearchIssues = parsed.issues;
+      openDropdown();
+      return;
+    }
+
+    const result = await resolveTypedSearchFilters(parsed, { selectedChoices });
+    if (!result.ok) {
+      typedSearchIssues = result.issues;
+      typedSearchChoices = result.choices;
+      typedSearchDisplayTokens = parsed.displayTokens.map((token) => {
+        const issue = result.issues.find((item) => item.raw === token.raw);
+        return issue ? { ...token, status: 'error' as const, issue } : token;
+      });
+      openDropdown();
+      return;
+    }
+
+    typedSearchIssues = [];
+    typedSearchChoices = [];
+    if (saveTerm) {
+      saveSearchTerm(term);
+    }
+    await handleSearch({ ...buildSearchPayload(result.queryText), ...result.filters }, term);
+  };
+
   const onSubmit = () => {
-    handlePromiseError(handleSearch(buildSearchPayload(value)));
-    saveSearchTerm(value);
+    handlePromiseError(submitSearch(value));
   };
 
   const onClear = () => {
     value = '';
+    clearTypedSearchDraft();
     input?.focus();
   };
 
   const onEscape = () => {
+    typedSearchIssues = [];
+    typedSearchChoices = [];
     closeDropdown();
     closeSearchTypeDropdown();
   };
@@ -152,19 +515,65 @@
   const onArrow = async (direction: 1 | -1) => {
     openDropdown();
     await tick();
-    searchHistoryBox?.moveSelection(direction);
+    if (showInlineSuggestions) {
+      inlineSearchFilterBox?.moveSelection(direction);
+    } else {
+      searchHistoryBox?.moveSelection(direction);
+    }
   };
 
-  const onEnter = (event: KeyboardEvent) => {
-    if (selectedId) {
+  const onInputKeyDown = (event: KeyboardEvent) => {
+    if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && showInlineSuggestions) {
+      event.preventDefault();
+      event.stopPropagation();
+      inlineSearchFilterBox?.moveSelection(event.key === 'ArrowDown' ? 1 : -1);
+      return;
+    }
+    if (event.key === 'Enter' && showInlineSuggestions) {
+      if (inlineSearchFilterBox?.selectActiveOption()) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    } else if (event.key === 'Enter' && selectedId) {
       event.preventDefault();
       searchHistoryBox?.selectActiveOption();
     }
   };
 
-  const onInput = () => {
+  const onInput = (event: Event) => {
+    caret = (event.currentTarget as HTMLInputElement).selectionStart ?? value.length;
     openDropdown();
     searchHistoryBox?.clearSelection();
+    inlineSearchFilterBox?.clearSelection();
+    parseTypedSearchDraft();
+  };
+
+  const updateCaret = (event: Event) => {
+    caret = (event.currentTarget as HTMLInputElement).selectionStart ?? value.length;
+    updateActiveTypedSearchToken();
+  };
+
+  const updateCaretAfterKeyUp = (event: KeyboardEvent) => {
+    if (
+      (event.key === 'ArrowDown' || event.key === 'ArrowUp') &&
+      liveTypedSearchStatus.status === 'ok' &&
+      liveTypedSearchStatus.items.length > 0
+    ) {
+      return;
+    }
+    updateCaret(event);
+  };
+
+  const onCompositionStart = () => {
+    isComposing = true;
+    updateActiveTypedSearchToken();
+    resetPhotoSearchSuggestions();
+  };
+
+  const onCompositionEnd = (event: CompositionEvent) => {
+    isComposing = false;
+    caret = (event.currentTarget as HTMLInputElement).selectionStart ?? value.length;
+    parseTypedSearchDraft();
   };
 
   const openDropdown = () => {
@@ -174,6 +583,7 @@
   const closeDropdown = () => {
     showSuggestions = false;
     searchHistoryBox?.clearSelection();
+    inlineSearchFilterBox?.clearSelection();
   };
 
   const toggleSearchTypeDropdown = () => {
@@ -184,11 +594,17 @@
     showSearchTypeDropdown = false;
   };
 
-  const selectSearchType = (type: string) => {
+  const selectSearchType = (type: TypedSearchPhotoMode) => {
     localStorage.setItem('searchQueryType', type);
     currentSearchType = type;
     showSearchTypeDropdown = false;
+    schedulePhotoSearchSuggestions(parseTypedSearch(value, { mode: 'draft' }));
     input?.focus();
+  };
+
+  const selectPhoto = (photo: AssetResponseDto) => {
+    closeDropdown();
+    handlePromiseError(goto(Route.viewAsset({ id: photo.id })));
   };
 
   const onsubmit = (event: Event) => {
@@ -239,6 +655,7 @@
 
   onMount(() => {
     getSearchType();
+    parseTypedSearchDraft();
   });
 
   const searchTypes = [
@@ -286,6 +703,13 @@
         bind:this={input}
         onfocus={openDropdown}
         oninput={onInput}
+        onclick={updateCaret}
+        onkeyup={updateCaretAfterKeyUp}
+        onselect={updateCaret}
+        onpointerup={updateCaret}
+        oncompositionstart={onCompositionStart}
+        oncompositionend={onCompositionEnd}
+        onkeydown={onInputKeyDown}
         role="combobox"
         aria-controls={listboxId}
         aria-activedescendant={selectedId ?? ''}
@@ -295,20 +719,33 @@
         use:shortcuts={[
           { shortcut: { key: 'Escape' }, onShortcut: onEscape },
           { shortcut: { ctrl: true, shift: true, key: 'k' }, onShortcut: onFilterClick },
-          { shortcut: { key: 'ArrowUp' }, onShortcut: () => onArrow(-1) },
-          { shortcut: { key: 'ArrowDown' }, onShortcut: () => onArrow(1) },
-          { shortcut: { key: 'Enter' }, onShortcut: onEnter, preventDefault: false },
+          { shortcut: { key: 'ArrowUp' }, onShortcut: () => !showInlineSuggestions && onArrow(-1) },
+          { shortcut: { key: 'ArrowDown' }, onShortcut: () => !showInlineSuggestions && onArrow(1) },
           { shortcut: { key: 'ArrowDown', alt: true }, onShortcut: openDropdown },
         ]}
       />
 
-      <!-- SEARCH HISTORY BOX -->
+      <InlineSearchFilterBox
+        bind:this={inlineSearchFilterBox}
+        id={listboxId}
+        isOpen={showSuggestions && showInlineSuggestions}
+        status={liveTypedSearchStatus}
+        tokens={typedSearchDisplayTokens}
+        issues={typedSearchIssues}
+        choices={typedSearchChoices}
+        photoStatus={photoSearchStatus}
+        onSelectLive={(choice) => handlePromiseError(selectLiveTypedSearchChoice(choice))}
+        onSelectChoice={selectTypedSearchChoice}
+        onSelectPhoto={selectPhoto}
+        onActiveSelectionChange={(id) => (selectedId = id)}
+      />
+
       <SearchHistoryBox
         bind:this={searchHistoryBox}
-        bind:isSearchSuggestions
+        bind:isSearchSuggestions={hasHistorySuggestions}
         id={listboxId}
         searchQuery={value}
-        isOpen={showSuggestions}
+        isOpen={showSuggestions && !showInlineSuggestions}
         onClearAllSearchTerms={clearAllSearchTerms}
         onClearSearchTerm={(searchTerm) => clearSearchTerm(searchTerm)}
         onSelectSearchTerm={(searchTerm) => handlePromiseError(onHistoryTermClick(searchTerm))}
