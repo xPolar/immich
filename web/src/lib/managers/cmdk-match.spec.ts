@@ -11,4 +11,9 @@ describe('isAlmostExactWordMatch', () => {
     expect(isAlmostExactWordMatch('up', 'Upload')).toBe(false);
     expect(isAlmostExactWordMatch('album', 'Upload')).toBe(false);
   });
+
+  it('matches translated labels with Unicode letters', () => {
+    expect(isAlmostExactWordMatch('télé', 'Téléverser')).toBe(true);
+    expect(isAlmostExactWordMatch('фот', 'Фотографии')).toBe(true);
+  });
 });

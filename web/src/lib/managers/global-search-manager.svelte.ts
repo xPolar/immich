@@ -120,7 +120,7 @@ export class GlobalSearchManager {
     this.activeIndex = 0;
   }
 
-  close() {
+  close(restoreFocus = this.presentation === 'modal') {
     this.isOpen = false;
     this.controller?.abort();
     clearTimeout(this.debounce);
@@ -129,8 +129,10 @@ export class GlobalSearchManager {
     this.typedSuggestions = { status: 'idle' };
     this.typedIssues = [];
     this.typedChoices = [];
-    const target = this.restoreFocus;
-    queueMicrotask(() => target?.focus());
+    if (restoreFocus) {
+      const target = this.restoreFocus;
+      queueMicrotask(() => target?.focus());
+    }
   }
 
   toggle(presentation: GlobalSearchPresentation = 'modal', trigger?: HTMLElement) {

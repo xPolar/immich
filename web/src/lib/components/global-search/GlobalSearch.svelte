@@ -95,27 +95,36 @@
 
         break;
       }
-      case 'Escape': {
-        event.preventDefault();
-        if (manager.query) {
-          manager.setQuery('');
-        } else {
-          manager.close();
-        }
-
-        break;
-      }
       // No default
     }
   }
 
   function dialogKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      if (manager.query) {
+        manager.setQuery('');
+      } else {
+        manager.close();
+      }
+      return;
+    }
     if (event.key !== 'Tab') {
       return;
     }
     const focusable = [
       ...(dialog?.querySelectorAll<HTMLElement>('button, input, [tabindex]:not([tabindex="-1"])') ?? []),
-    ];
+    ].filter((element) => {
+      if (element.matches(':disabled')) {
+        return false;
+      }
+      const checkVisibility = (element as HTMLElement & { checkVisibility?: () => boolean }).checkVisibility;
+      if (typeof checkVisibility === 'function') {
+        return checkVisibility.call(element);
+      }
+      return !element.closest('[hidden], [aria-hidden="true"], .hidden');
+    });
     if (focusable.length === 0) {
       return;
     }
@@ -308,7 +317,17 @@
               (result.kind === 'command' || result.kind === 'navigation' || result.kind === 'search')
                 ? 'Top result'
                 : sectionFor(result)}
-            {#if index === 0 || sectionFor(manager.results[index - 1]) !== section}
+            {@const previousSection =
+              index === 1 &&
+              manager.scope === 'all' &&
+              (manager.results[0]?.kind === 'command' ||
+                manager.results[0]?.kind === 'navigation' ||
+                manager.results[0]?.kind === 'search')
+                ? 'Top result'
+                : index > 0
+                  ? sectionFor(manager.results[index - 1])
+                  : undefined}
+            {#if index === 0 || previousSection !== section}
               <div class="px-3 pt-3 pb-1 text-xs font-semibold tracking-wide text-gray-500 uppercase">{section}</div>
             {/if}
             <button

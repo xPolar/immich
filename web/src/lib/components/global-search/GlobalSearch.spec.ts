@@ -69,6 +69,27 @@ describe('GlobalSearch modal', () => {
     expect(document.activeElement).toBe(last);
   });
 
+  it('skips disabled scoped mode controls and handles Escape outside the input', async () => {
+    manager.scope = 'people';
+    manager.query = 'cats';
+    render(GlobalSearchTestWrapper);
+    const input = screen.getByRole('textbox');
+    const close = screen.getByRole('button', { name: /clear/i });
+
+    close.focus();
+    await fireEvent.keyDown(close, { key: 'Tab' });
+    expect(document.activeElement).toBe(input);
+
+    close.focus();
+    await fireEvent.keyDown(close, { key: 'Escape' });
+    expect(manager.setQuery).toHaveBeenCalledWith('');
+    expect(manager.close).not.toHaveBeenCalled();
+
+    manager.query = '';
+    await fireEvent.keyDown(close, { key: 'Escape' });
+    expect(manager.close).toHaveBeenCalledOnce();
+  });
+
   it('labels a promoted command as the Top result', () => {
     const command = {
       id: 'cmd:upload',
@@ -80,5 +101,26 @@ describe('GlobalSearch modal', () => {
     manager.activeResult = command as never;
     render(GlobalSearchTestWrapper);
     expect(screen.getByText('Top result')).toBeInTheDocument();
+  });
+
+  it('starts the natural section after a promoted top result', () => {
+    const commands = [
+      {
+        id: 'cmd:upload',
+        kind: 'command',
+        item: { id: 'cmd:upload', labelKey: 'upload', icon: '', run: vi.fn() },
+      },
+      {
+        id: 'cmd:new-album',
+        kind: 'command',
+        item: { id: 'cmd:new-album', labelKey: 'new_album', icon: '', run: vi.fn() },
+      },
+    ];
+    manager.query = 'upload';
+    manager.results = commands as never;
+    manager.activeResult = commands[0] as never;
+    render(GlobalSearchTestWrapper);
+    expect(screen.getByText('Top result')).toBeInTheDocument();
+    expect(screen.getAllByText('Commands')).not.toHaveLength(0);
   });
 });

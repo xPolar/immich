@@ -48,6 +48,17 @@ describe('GlobalSearchManager keyboard state', () => {
     expect(document.activeElement).toBe(trigger);
   });
 
+  it('does not restore focus when closing the focus-to-open dropdown', async () => {
+    const trigger = document.createElement('input');
+    const outside = document.createElement('button');
+    document.body.append(trigger, outside);
+    manager.open('dropdown', trigger);
+    outside.focus();
+    manager.close();
+    await Promise.resolve();
+    expect(document.activeElement).toBe(outside);
+  });
+
   it('cycles search modes in the declared order', () => {
     expect(manager.mode).toBe('smart');
     manager.cycleMode();

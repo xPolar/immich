@@ -3,9 +3,11 @@
   import { clickOutside } from '$lib/actions/click-outside';
   import { Icon } from '@immich/ui';
   import { mdiClose, mdiMagnify } from '@mdi/js';
+  import { tick } from 'svelte';
   import { t } from 'svelte-i18n';
 
   let input = $state<HTMLInputElement>();
+  let resultList = $state<HTMLDivElement>();
   let showProgress = $state(false);
   const isApple = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
   const open = () => {
@@ -22,6 +24,19 @@
     const timer = setTimeout(() => (showProgress = true), 200);
     return () => clearTimeout(timer);
   });
+
+  $effect(() => {
+    const activeIndex = manager.activeIndex;
+    void tick().then(() => {
+      if (activeIndex >= 0) {
+        resultList?.querySelector<HTMLElement>('[data-active="true"]')?.scrollIntoView({ block: 'nearest' });
+      }
+    });
+  });
+
+  function syncCaret(event: Event) {
+    manager.caret = (event.currentTarget as HTMLInputElement).selectionStart ?? manager.query.length;
+  }
 
   function keydown(event: KeyboardEvent) {
     if (event.ctrlKey && event.key === '/') {
@@ -90,12 +105,18 @@
       placeholder="Search photos…  @ people  # tags  / albums  > commands"
       maxlength="256"
       onfocus={open}
-      onclick={open}
+      onclick={(event) => {
+        open();
+        syncCaret(event);
+      }}
       oninput={(event) =>
         manager.setQuery(
           event.currentTarget.value,
           event.currentTarget.selectionStart ?? event.currentTarget.value.length,
         )}
+      onkeyup={syncCaret}
+      onpointerup={syncCaret}
+      onselect={syncCaret}
       onkeydown={keydown}
     />
     {#if manager.presentation === 'dropdown' && manager.isOpen}
@@ -116,6 +137,7 @@
   {#if manager.isOpen && manager.presentation === 'dropdown'}
     <div
       id="global-search-dropdown"
+      bind:this={resultList}
       role="listbox"
       class="absolute inset-s-0 top-full z-50 mt-2 max-h-[65vh] w-full overflow-y-auto rounded-xl border border-gray-200 bg-white/95 p-2 shadow-2xl backdrop-blur-md dark:border-gray-700 dark:bg-immich-dark-bg/95"
     >
@@ -128,6 +150,7 @@
           type="button"
           role="option"
           aria-selected={index === manager.activeIndex}
+          data-active={index === manager.activeIndex}
           class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-start {index === manager.activeIndex
             ? 'bg-primary/10 text-primary'
             : 'hover:bg-gray-100 dark:hover:bg-gray-700'}"

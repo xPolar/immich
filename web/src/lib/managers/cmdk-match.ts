@@ -2,7 +2,7 @@ export function isAlmostExactWordMatch(query: string, label: string, minimumLeng
   const words = (value: string) =>
     value
       .toLocaleLowerCase()
-      .split(/[^a-z0-9]+/)
+      .split(/[^\p{L}\p{N}\p{M}]+/u)
       .filter(Boolean);
   return words(query).some(
     (queryWord) =>

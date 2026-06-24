@@ -27,6 +27,7 @@ const { manager } = vi.hoisted(() => ({
     removeRecent: vi.fn(),
     setMode: vi.fn(),
     cycleMode: vi.fn(),
+    caret: 0,
   },
 }));
 
@@ -85,5 +86,37 @@ describe('GlobalSearchInputTrigger', () => {
     const input = screen.getByRole('textbox');
     await fireEvent.keyDown(input, { key: '/', ctrlKey: true });
     expect(manager.cycleMode).toHaveBeenCalledOnce();
+  });
+
+  it('synchronizes the caret after cursor-only movement', async () => {
+    manager.query = 'person:alice cats';
+    manager.isOpen = true;
+    manager.presentation = 'dropdown';
+    render(GlobalSearchInputTrigger);
+    const input = screen.getByRole('textbox') as HTMLInputElement;
+    input.setSelectionRange(7, 7);
+    await fireEvent.keyUp(input, { key: 'ArrowLeft' });
+    expect(manager.caret).toBe(7);
+  });
+
+  it('keeps the keyboard-active result visible', async () => {
+    const scrollIntoView = vi.fn();
+    const result = {
+      id: 'nav:photos',
+      kind: 'navigation',
+      item: { id: 'nav:photos', labelKey: 'photos', route: '/photos', icon: '', category: 'user' },
+    };
+    manager.isOpen = true;
+    manager.presentation = 'dropdown';
+    manager.results = [result] as never;
+    manager.activeResult = result as never;
+    const { container } = render(GlobalSearchInputTrigger);
+    const option = container.querySelector<HTMLElement>('[role="option"]')!;
+    option.scrollIntoView = scrollIntoView;
+    manager.activeIndex = 1;
+    manager.activeIndex = 0;
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
   });
 });
