@@ -111,6 +111,8 @@ export class MapRepository {
       type,
     }: MapMarkerSearchOptions = {},
   ) {
+    const uniquePersonIds = personIds ? [...new Set(personIds)] : undefined;
+
     return this.mapMarkersQuery()
       .$if(isArchived === true, (qb) =>
         qb.where((eb) =>
@@ -128,18 +130,18 @@ export class MapRepository {
       .$if(fileCreatedBefore !== undefined, (q) => q.where('fileCreatedAt', '<=', fileCreatedBefore!))
       .$if(takenAfter !== undefined, (q) => q.where('fileCreatedAt', '>=', takenAfter!))
       .$if(takenBefore !== undefined, (q) => q.where('fileCreatedAt', '<=', takenBefore!))
-      .$if(personIds !== undefined && personIds.length > 0, (q) =>
+      .$if(uniquePersonIds !== undefined && uniquePersonIds.length > 0, (q) =>
         q.where((eb) =>
           eb.exists(
             eb
               .selectFrom('asset_face')
               .select('asset_face.assetId')
               .whereRef('asset_face.assetId', '=', 'asset.id')
-              .where('asset_face.personId', '=', anyUuid(personIds!))
+              .where('asset_face.personId', '=', anyUuid(uniquePersonIds!))
               .where('asset_face.deletedAt', 'is', null)
               .where('asset_face.isVisible', 'is', true)
               .groupBy('asset_face.assetId')
-              .having((eb) => eb.fn.count('asset_face.personId').distinct(), '=', personIds!.length),
+              .having((eb) => eb.fn.count('asset_face.personId').distinct(), '=', uniquePersonIds!.length),
           ),
         ),
       )

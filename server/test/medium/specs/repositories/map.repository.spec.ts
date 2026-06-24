@@ -112,6 +112,7 @@ describe(MapRepository.name, () => {
     await expect(getIds({ personIds: [firstPerson.id, secondPerson.id] })).resolves.toEqual(
       new Set([matchingAsset.id]),
     );
+    await expect(getIds({ personIds: [firstPerson.id, firstPerson.id] })).resolves.toEqual(new Set([matchingAsset.id]));
     await expect(getIds({ tagIds: [firstTag.id, secondTag.id] })).resolves.toEqual(
       new Set([matchingAsset.id, videoAsset.id]),
     );
