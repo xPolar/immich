@@ -84,6 +84,7 @@ describe(MapRepository.name, () => {
         rating: null,
       }),
       ctx.newAssetFace({ assetId: matchingAsset.id, personId: firstPerson.id }),
+      ctx.newAssetFace({ assetId: matchingAsset.id, personId: secondPerson.id }),
       ctx.newAssetFace({ assetId: videoAsset.id, personId: secondPerson.id }),
       ctx.newTagAsset({ tagIds: [firstTag.id], assetIds: [matchingAsset.id] }),
       ctx.newTagAsset({ tagIds: [secondTag.id], assetIds: [videoAsset.id] }),
@@ -109,7 +110,7 @@ describe(MapRepository.name, () => {
       }),
     ).resolves.toEqual(new Set([matchingAsset.id]));
     await expect(getIds({ personIds: [firstPerson.id, secondPerson.id] })).resolves.toEqual(
-      new Set([matchingAsset.id, videoAsset.id]),
+      new Set([matchingAsset.id]),
     );
     await expect(getIds({ tagIds: [firstTag.id, secondTag.id] })).resolves.toEqual(
       new Set([matchingAsset.id, videoAsset.id]),

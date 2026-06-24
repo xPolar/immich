@@ -137,7 +137,9 @@ export class MapRepository {
               .whereRef('asset_face.assetId', '=', 'asset.id')
               .where('asset_face.personId', '=', anyUuid(personIds!))
               .where('asset_face.deletedAt', 'is', null)
-              .where('asset_face.isVisible', 'is', true),
+              .where('asset_face.isVisible', 'is', true)
+              .groupBy('asset_face.assetId')
+              .having((eb) => eb.fn.count('asset_face.personId').distinct(), '=', personIds!.length),
           ),
         ),
       )
