@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getPeopleThumbnailUrl } from '$lib/utils';
+  import { getAssetMediaUrl, getPeopleThumbnailUrl } from '$lib/utils';
   import type {
     LiveTypedSearchChoice,
     LiveTypedSearchKey,
@@ -7,14 +7,17 @@
   } from '$lib/utils/typed-search/typed-search-live-suggestions';
   import type { TypedSearchDisplayToken, TypedSearchIssue } from '$lib/utils/typed-search/typed-search-parser';
   import type { TypedSearchChoice } from '$lib/utils/typed-search/typed-search-resolver';
-  import { Icon } from '@immich/ui';
+  import type { TypedSearchPhotoStatus } from '$lib/utils/typed-search/typed-search-photo-suggestions';
+  import { AssetMediaSize, type AssetResponseDto } from '@immich/sdk';
+  import { Icon, LoadingSpinner } from '@immich/ui';
   import { mdiAlertCircleOutline, mdiTune } from '@mdi/js';
   import { t } from 'svelte-i18n';
   import TypedSearchTokenRail from './TypedSearchTokenRail.svelte';
 
   type SelectableChoice =
     | { kind: 'live'; choice: LiveTypedSearchChoice }
-    | { kind: 'commit'; choice: TypedSearchChoice };
+    | { kind: 'commit'; choice: TypedSearchChoice }
+    | { kind: 'photo'; photo: AssetResponseDto };
 
   interface Props {
     id: string;
@@ -23,8 +26,10 @@
     tokens?: TypedSearchDisplayToken[];
     issues?: TypedSearchIssue[];
     choices?: TypedSearchChoice[];
+    photoStatus?: TypedSearchPhotoStatus;
     onSelectLive: (choice: LiveTypedSearchChoice) => void;
     onSelectChoice: (choice: TypedSearchChoice) => void;
+    onSelectPhoto: (photo: AssetResponseDto) => void;
     onActiveSelectionChange: (selectedId?: string) => void;
   }
 
@@ -35,8 +40,10 @@
     tokens = [],
     issues = [],
     choices = [],
+    photoStatus = { status: 'idle' },
     onSelectLive,
     onSelectChoice,
+    onSelectPhoto,
     onActiveSelectionChange,
   }: Props = $props();
 
@@ -46,11 +53,15 @@
   const selectableChoices = $derived<SelectableChoice[]>([
     ...choices.map((choice) => ({ kind: 'commit' as const, choice })),
     ...(status.status === 'ok' ? status.items.map((choice) => ({ kind: 'live' as const, choice })) : []),
+    ...(photoStatus.status === 'ok' ? photoStatus.items.map((photo) => ({ kind: 'photo' as const, photo })) : []),
   ]);
 
   $effect(() => {
-    const signature =
+    const liveSignature =
       status.status === 'ok' ? `${status.key}:${status.items.map((choice) => choice.id).join('|')}` : status.status;
+    const photoSignature =
+      photoStatus.status === 'ok' ? photoStatus.items.map((photo) => photo.id).join('|') : photoStatus.status;
+    const signature = `${liveSignature}:${photoSignature}`;
     if (signature === previousLiveSignature) {
       return;
     }
@@ -99,8 +110,10 @@
     clearSelection();
     if (item.kind === 'live') {
       onSelectLive(item.choice);
-    } else {
+    } else if (item.kind === 'commit') {
       onSelectChoice(item.choice);
+    } else {
+      onSelectPhoto(item.photo);
     }
   }
 
@@ -124,6 +137,15 @@
   function getLiveChoice(index: number) {
     const item = selectableChoices[index];
     return item?.kind === 'live' ? item.choice : undefined;
+  }
+
+  function getPhoto(index: number) {
+    const item = selectableChoices[index];
+    return item?.kind === 'photo' ? item.photo : undefined;
+  }
+
+  function photoSubtitle(photo: AssetResponseDto) {
+    return [photo.exifInfo?.dateTimeOriginal?.slice(0, 10), photo.exifInfo?.city].filter(Boolean).join(' · ');
   }
 </script>
 
@@ -233,6 +255,60 @@
           <p class="px-4 py-2 text-xs text-gray-500 dark:text-gray-400">
             {$t('search_filter_matches_error', { values: { filter: status.key } })}
           </p>
+        {/if}
+      </section>
+    {/if}
+
+    {#if photoStatus.status !== 'idle'}
+      <section class="pt-3" data-typed-search-photos>
+        <p class="px-4 pb-1 text-[11px] font-semibold tracking-wider text-gray-500 uppercase dark:text-gray-400">
+          {$t('photos')}
+        </p>
+        {#if photoStatus.status === 'ok'}
+          {@const photoOffset = choices.length + (status.status === 'ok' ? status.items.length : 0)}
+          {#each photoStatus.items as photo, photoIndex (photo.id)}
+            {@const index = photoOffset + photoIndex}
+            {@const selectablePhoto = getPhoto(index)}
+            {@const subtitle = photoSubtitle(photo)}
+            <button
+              id={getId(index)}
+              type="button"
+              role="option"
+              tabindex="-1"
+              aria-selected={selectedIndex === index}
+              aria-label={photo.originalFileName}
+              class="flex h-14 w-full items-center gap-3 px-4 py-2 text-left transition-colors hover:bg-primary/10 aria-selected:bg-primary/10"
+              onclick={() => selectablePhoto && select({ kind: 'photo', photo: selectablePhoto })}
+            >
+              <img
+                src={getAssetMediaUrl({
+                  id: photo.id,
+                  size: AssetMediaSize.Thumbnail,
+                  cacheKey: photo.thumbhash,
+                })}
+                alt=""
+                class="size-10 shrink-0 rounded-md bg-gray-200 object-cover dark:bg-gray-700"
+                loading="lazy"
+              />
+              <span class="min-w-0 flex-1">
+                <span class="block truncate text-sm font-medium">{photo.originalFileName}</span>
+                {#if subtitle}
+                  <span class="block truncate text-xs text-gray-500 dark:text-gray-400">{subtitle}</span>
+                {/if}
+              </span>
+            </button>
+          {/each}
+        {:else if photoStatus.status === 'loading'}
+          <div class="flex items-center gap-2 px-4 py-3 text-xs text-gray-500 dark:text-gray-400">
+            <LoadingSpinner size="small" />
+            <span>{$t('search_photo_matches_loading')}</span>
+          </div>
+        {:else if photoStatus.status === 'empty'}
+          <p class="px-4 py-2 text-xs text-gray-500 dark:text-gray-400">{$t('search_photo_matches_none')}</p>
+        {:else if photoStatus.status === 'timeout'}
+          <p class="px-4 py-2 text-xs text-gray-500 dark:text-gray-400">{$t('search_photo_matches_timeout')}</p>
+        {:else}
+          <p class="px-4 py-2 text-xs text-gray-500 dark:text-gray-400">{$t('search_photo_matches_error')}</p>
         {/if}
       </section>
     {/if}

@@ -4,6 +4,7 @@
   import { shortcuts } from '$lib/actions/shortcut';
   import SearchFilterModal from '$lib/modals/SearchFilterModal.svelte';
   import { Route } from '$lib/route';
+  import { lang } from '$lib/stores/preferences.store';
   import { searchStore } from '$lib/stores/search.svelte';
   import { handlePromiseError } from '$lib/utils';
   import { generateId } from '$lib/utils/generate-id';
@@ -23,8 +24,13 @@
     type TypedSearchIssue,
     type TypedSearchParseResult,
   } from '$lib/utils/typed-search/typed-search-parser';
+  import {
+    resolveTypedSearchPhotoSuggestions,
+    type TypedSearchPhotoMode,
+    type TypedSearchPhotoStatus,
+  } from '$lib/utils/typed-search/typed-search-photo-suggestions';
   import { resolveTypedSearchFilters, type TypedSearchChoice } from '$lib/utils/typed-search/typed-search-resolver';
-  import type { MetadataSearchDto, SmartSearchDto } from '@immich/sdk';
+  import type { AssetResponseDto, MetadataSearchDto, SmartSearchDto } from '@immich/sdk';
   import { Button, IconButton, modalManager } from '@immich/ui';
   import { mdiClose, mdiMagnify, mdiTune } from '@mdi/js';
   import { onDestroy, onMount, tick } from 'svelte';
@@ -51,7 +57,7 @@
   let selectedId: string | undefined = $state();
   let close: (() => Promise<void>) | undefined;
   let showSearchTypeDropdown = $state(false);
-  let currentSearchType = $state('smart');
+  let currentSearchType = $state<TypedSearchPhotoMode>('smart');
   let typedSearchDisplayTokens = $state<TypedSearchDisplayToken[]>([]);
   let typedSearchIssues = $state<TypedSearchIssue[]>([]);
   let typedSearchChoices = $state<TypedSearchChoice[]>([]);
@@ -64,12 +70,17 @@
   let liveSuggestionTimer: ReturnType<typeof setTimeout> | undefined;
   let liveSuggestionController: AbortController | undefined;
   let liveSuggestionRequestId = 0;
+  let photoSuggestionTimer: ReturnType<typeof setTimeout> | undefined;
+  let photoSuggestionController: AbortController | undefined;
+  let photoSuggestionRequestId = 0;
+  let photoSearchStatus = $state<TypedSearchPhotoStatus>({ status: 'idle' });
 
   let showInlineSuggestions = $derived(
     typedSearchDisplayTokens.length > 0 ||
       typedSearchIssues.length > 0 ||
       typedSearchChoices.length > 0 ||
-      liveTypedSearchStatus.status !== 'idle',
+      liveTypedSearchStatus.status !== 'idle' ||
+      photoSearchStatus.status !== 'idle',
   );
   let isSearchSuggestions = $derived(showInlineSuggestions || hasHistorySuggestions);
 
@@ -79,6 +90,7 @@
   onDestroy(() => {
     searchStore.isSearchEnabled = false;
     clearLiveSuggestionRequest();
+    clearPhotoSuggestionRequest();
   });
 
   const handleSearch = async (payload: SmartSearchDto | MetadataSearchDto, displayText?: string) => {
@@ -214,6 +226,7 @@
     const parsed = parseTypedSearch(value, { mode: 'draft' });
     applyParsedState(parsed);
     updateActiveTypedSearchToken(parsed);
+    schedulePhotoSearchSuggestions(parsed);
     return parsed;
   }
 
@@ -227,6 +240,7 @@
     isComposing = false;
     skipNextLiveSuggestionsForCaret = null;
     resetLiveTypedSearchSuggestions();
+    resetPhotoSearchSuggestions();
   }
 
   function clearLiveSuggestionRequest() {
@@ -242,6 +256,71 @@
     clearLiveSuggestionRequest();
     liveSuggestionRequestId++;
     liveTypedSearchStatus = { status: 'idle' };
+  }
+
+  function clearPhotoSuggestionRequest() {
+    if (photoSuggestionTimer) {
+      clearTimeout(photoSuggestionTimer);
+      photoSuggestionTimer = undefined;
+    }
+    photoSuggestionController?.abort();
+    photoSuggestionController = undefined;
+  }
+
+  function resetPhotoSearchSuggestions() {
+    clearPhotoSuggestionRequest();
+    photoSuggestionRequestId++;
+    photoSearchStatus = { status: 'idle' };
+  }
+
+  function schedulePhotoSearchSuggestions(parsed: TypedSearchParseResult) {
+    const query = parsed.queryText.trim();
+    if (!query || isComposing) {
+      resetPhotoSearchSuggestions();
+      return;
+    }
+
+    clearPhotoSuggestionRequest();
+    const requestId = ++photoSuggestionRequestId;
+    const mode = currentSearchType;
+    photoSearchStatus = { status: 'loading' };
+    photoSuggestionTimer = setTimeout(() => {
+      photoSuggestionTimer = undefined;
+      const controller = new AbortController();
+      photoSuggestionController = controller;
+      const timeoutSignal = AbortSignal.timeout(15_000);
+      const signal = AbortSignal.any([controller.signal, timeoutSignal]);
+
+      resolveTypedSearchPhotoSuggestions({ query, mode, language: $lang, signal })
+        .then((status) => {
+          if (requestId !== photoSuggestionRequestId) {
+            return;
+          }
+          if (timeoutSignal.aborted) {
+            photoSearchStatus = { status: 'timeout' };
+          } else if (!signal.aborted) {
+            photoSearchStatus = status;
+          }
+        })
+        .catch((error: unknown) => {
+          if (requestId !== photoSuggestionRequestId) {
+            return;
+          }
+          if (timeoutSignal.aborted) {
+            photoSearchStatus = { status: 'timeout' };
+          } else if (!(error instanceof Error && error.name === 'AbortError')) {
+            photoSearchStatus = {
+              status: 'error',
+              message: error instanceof Error ? error.message : 'Unable to load photo matches',
+            };
+          }
+        })
+        .finally(() => {
+          if (photoSuggestionController === controller) {
+            photoSuggestionController = undefined;
+          }
+        });
+    }, 200);
   }
 
   function scheduleLiveTypedSearchSuggestions(parsed: TypedSearchParseResult) {
@@ -470,11 +549,13 @@
   const onCompositionStart = () => {
     isComposing = true;
     updateActiveTypedSearchToken();
+    resetPhotoSearchSuggestions();
   };
 
   const onCompositionEnd = (event: CompositionEvent) => {
     isComposing = false;
-    updateCaret(event);
+    caret = (event.currentTarget as HTMLInputElement).selectionStart ?? value.length;
+    parseTypedSearchDraft();
   };
 
   const openDropdown = () => {
@@ -495,11 +576,17 @@
     showSearchTypeDropdown = false;
   };
 
-  const selectSearchType = (type: string) => {
+  const selectSearchType = (type: TypedSearchPhotoMode) => {
     localStorage.setItem('searchQueryType', type);
     currentSearchType = type;
     showSearchTypeDropdown = false;
+    schedulePhotoSearchSuggestions(parseTypedSearch(value, { mode: 'draft' }));
     input?.focus();
+  };
+
+  const selectPhoto = (photo: AssetResponseDto) => {
+    closeDropdown();
+    handlePromiseError(goto(Route.viewAsset({ id: photo.id })));
   };
 
   const onsubmit = (event: Event) => {
@@ -628,8 +715,10 @@
         tokens={typedSearchDisplayTokens}
         issues={typedSearchIssues}
         choices={typedSearchChoices}
+        photoStatus={photoSearchStatus}
         onSelectLive={(choice) => handlePromiseError(selectLiveTypedSearchChoice(choice))}
         onSelectChoice={selectTypedSearchChoice}
+        onSelectPhoto={selectPhoto}
         onActiveSelectionChange={(id) => (selectedId = id)}
       />
 

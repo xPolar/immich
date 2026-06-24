@@ -1,4 +1,12 @@
-import { getAllPeople, getAllTags, getSearchSuggestions, searchPerson, SearchSuggestionType } from '@immich/sdk';
+import {
+  getAllPeople,
+  getAllTags,
+  getSearchSuggestions,
+  searchAssets,
+  searchPerson,
+  searchSmart,
+  SearchSuggestionType,
+} from '@immich/sdk';
 import { render, screen, waitFor } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { init, register, waitLocale } from 'svelte-i18n';
@@ -13,7 +21,9 @@ vi.mock('@immich/sdk', async (importOriginal) => ({
   getAllPeople: vi.fn(),
   getAllTags: vi.fn(),
   getSearchSuggestions: vi.fn(),
+  searchAssets: vi.fn(),
   searchPerson: vi.fn(),
+  searchSmart: vi.fn(),
 }));
 
 beforeAll(async () => {
@@ -23,15 +33,24 @@ beforeAll(async () => {
 });
 
 describe('SearchBar inline filters', () => {
+  const searchResponse = (items: Array<{ id: string; originalFileName: string; thumbhash?: string }>) =>
+    ({
+      assets: { items, count: items.length, total: items.length, nextPage: null, facets: [] },
+      albums: { items: [], count: 0, total: 0, facets: [] },
+    }) as never;
+
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(goto).mockResolvedValue();
     localStorage.clear();
     sessionStorage.clear();
     searchStore.savedSearchTerms = [];
     vi.mocked(getAllPeople).mockResolvedValue({ people: [] } as never);
     vi.mocked(getAllTags).mockResolvedValue([]);
     vi.mocked(getSearchSuggestions).mockResolvedValue([]);
+    vi.mocked(searchAssets).mockResolvedValue(searchResponse([]));
     vi.mocked(searchPerson).mockResolvedValue([]);
+    vi.mocked(searchSmart).mockResolvedValue(searchResponse([]));
   });
 
   it('submits scalar filters with the plain search text', async () => {
@@ -136,6 +155,59 @@ describe('SearchBar inline filters', () => {
     expect(screen.getByText('Type must be photo, image, or video')).toBeInTheDocument();
     expect(screen.getByTestId('typed-search-token-rating')).toHaveAttribute('data-status', 'error');
     expect(screen.getByTestId('typed-search-token-type')).toHaveAttribute('data-status', 'error');
+  });
+
+  it('surfaces live photo thumbnails beneath filter matches', async () => {
+    const user = userEvent.setup();
+    vi.mocked(searchPerson).mockResolvedValue([{ id: 'person-id', name: 'Pierre' }] as never);
+    vi.mocked(searchSmart).mockResolvedValue(
+      searchResponse([
+        { id: 'asset-1', originalFileName: 'skyscraper-1.jpg', thumbhash: 'hash-1' },
+        { id: 'asset-2', originalFileName: 'skyscraper-2.jpg', thumbhash: 'hash-2' },
+      ]),
+    );
+    const { container } = render(SearchBarTest);
+    const input = screen.getByRole('combobox');
+
+    await user.type(input, 'skyscraper person:Pierre');
+
+    expect(await screen.findByRole('option', { name: 'skyscraper-1.jpg' })).toBeInTheDocument();
+    expect(screen.getByText('Photos')).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'skyscraper-2.jpg' })).toBeInTheDocument();
+    expect(searchSmart).toHaveBeenLastCalledWith(
+      {
+        smartSearchDto: expect.objectContaining({
+          query: 'skyscraper',
+          size: 5,
+          withExif: true,
+        }),
+      },
+      expect.anything(),
+    );
+    const thumbnail = container.querySelector('[data-typed-search-photos] img');
+    expect(thumbnail?.getAttribute('src')).toContain('/api/assets/asset-1/thumbnail');
+    expect(thumbnail?.getAttribute('src')).toContain('size=thumbnail');
+  });
+
+  it('opens a clicked or keyboard-selected photo', async () => {
+    const user = userEvent.setup();
+    vi.mocked(searchSmart).mockResolvedValue(
+      searchResponse([
+        { id: 'asset-1', originalFileName: 'tower-1.jpg' },
+        { id: 'asset-2', originalFileName: 'tower-2.jpg' },
+      ]),
+    );
+    render(SearchBarTest);
+    const input = screen.getByRole('combobox');
+
+    await user.type(input, 'tower');
+    await user.click(await screen.findByRole('option', { name: 'tower-2.jpg' }));
+    expect(goto).toHaveBeenLastCalledWith('/photos/asset-2');
+
+    vi.mocked(goto).mockClear();
+    await user.click(input);
+    await user.keyboard('[ArrowDown][Enter]');
+    expect(goto).toHaveBeenLastCalledWith('/photos/asset-1');
   });
 });
 
