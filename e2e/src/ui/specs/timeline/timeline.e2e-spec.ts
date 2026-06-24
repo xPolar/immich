@@ -83,6 +83,11 @@ test.describe('Timeline', () => {
 
       const yearCard = page.getByRole('button', { name: /^2023,/ });
       await expect(yearCard).toBeVisible();
+      const [yearCardBox, yearCoverBox] = await Promise.all([
+        yearCard.boundingBox(),
+        yearCard.locator('img').boundingBox(),
+      ]);
+      expect(yearCoverBox).toEqual(yearCardBox);
       await yearCard.click();
       await expect(page.getByRole('button', { name: 'Months' })).toHaveAttribute('aria-pressed', 'true');
 

@@ -70,7 +70,7 @@
 >
   {#if coverAsset}
     {#if coverAsset.thumbhash}
-      <Thumbhash base64ThumbHash={coverAsset.thumbhash} class="absolute size-full object-cover" />
+      <Thumbhash base64ThumbHash={coverAsset.thumbhash} class="absolute inset-0 size-full object-cover" />
     {/if}
     <Image
       src={getAssetMediaUrl({
@@ -80,7 +80,7 @@
       })}
       alt=""
       loading="lazy"
-      class="absolute size-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+      class="absolute inset-0 size-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
     />
   {/if}
 
