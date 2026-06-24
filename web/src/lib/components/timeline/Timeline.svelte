@@ -43,6 +43,7 @@
   interface Props {
     isSelectionMode?: boolean;
     singleSelect?: boolean;
+    enableGrouping?: boolean;
     /** `true` if this asset grid is responds to navigation events; if `true`, then look at the
      `AssetViewingStore.gridScrollTarget` and load and scroll to the asset specified, and
      additionally, update the page location/url with the asset as the timeline is scrolled */
@@ -78,6 +79,7 @@
   let {
     isSelectionMode = false,
     singleSelect = false,
+    enableGrouping = true,
     enableRouting,
     timelineManager = $bindable(),
     options,
@@ -118,13 +120,13 @@
   const groupingPreference = new PersistedLocalStorage<TimelineGroupingMode>('timeline-grouping', 'all', {
     valid: (value): value is TimelineGroupingMode => value === 'years' || value === 'months' || value === 'all',
   });
-  let groupingMode = $state<TimelineGroupingMode>(groupingPreference.current);
+  let groupingMode = $derived<TimelineGroupingMode>(enableGrouping ? groupingPreference.current : 'all');
 
   const isEmpty = $derived(timelineManager.isInitialized && timelineManager.months.length === 0);
   const timelineYearGroups = $derived(groupTimelineMonthsByYear(timelineManager.months));
   const maxMd = $derived(mediaQueryManager.maxMd);
   const usingMobileDevice = $derived(mediaQueryManager.pointerCoarse);
-  const groupingHeaderHeight = 64;
+  const groupingHeaderHeight = $derived(enableGrouping ? 64 : 0);
 
   $effect(() => {
     const layoutOptions = maxMd
@@ -226,7 +228,9 @@
 
     timelineManager.viewportTopMonthIntersection = undefined;
     groupingMode = mode;
-    groupingPreference.current = mode;
+    if (enableGrouping) {
+      groupingPreference.current = mode;
+    }
     await scrollToGroupingAnchor(mode, anchor);
   };
 
@@ -688,7 +692,7 @@
     {onEscape}
   />
 
-  {#if timelineManager.months.length > 0 && !assetInteraction.selectionActive}
+  {#if enableGrouping && timelineManager.months.length > 0 && !assetInteraction.selectionActive}
     <div class="pointer-events-none absolute inset-x-0 top-2 z-20 flex justify-center">
       <TimelineGroupingControl value={groupingMode} onChange={(mode) => void setGroupingMode(mode)} />
     </div>
