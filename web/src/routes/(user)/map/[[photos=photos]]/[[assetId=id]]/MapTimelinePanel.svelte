@@ -109,6 +109,7 @@
     <Timeline
       bind:timelineManager
       enableRouting={false}
+      enableGrouping={false}
       options={timelineOptions}
       onEscape={handleEscape}
       assetInteraction={assetMultiSelectManager}

@@ -1,7 +1,14 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import UserPageLayout from '$lib/components/layouts/UserPageLayout.svelte';
+  import MapFilterPanel from '$lib/components/shared-components/map/MapFilterPanel.svelte';
   import MapTimelinePanel from './MapTimelinePanel.svelte';
+  import {
+    createMapFilterState,
+    getActiveMapFilterCount,
+    toMapMarkerFilters,
+    type MapFilterState,
+  } from '$lib/components/shared-components/map/map-filter';
   import type { SelectionBBox } from '$lib/components/shared-components/map/types';
   import { timeToLoadTheMap } from '$lib/constants';
   import Portal from '$lib/elements/Portal.svelte';
@@ -11,8 +18,10 @@
   import { handlePromiseError } from '$lib/utils';
   import { delay } from '$lib/utils/asset-utils';
   import { navigate } from '$lib/utils/navigation';
-  import { LoadingSpinner } from '@immich/ui';
+  import { Button, LoadingSpinner } from '@immich/ui';
+  import { mdiFilterVariant } from '@mdi/js';
   import { onDestroy } from 'svelte';
+  import { t } from 'svelte-i18n';
   import type { PageData } from './$types';
 
   interface Props {
@@ -23,12 +32,22 @@
   let selectedClusterIds = $state.raw(new Set<string>());
   let selectedClusterBBox = $state.raw<SelectionBBox>();
   let isTimelinePanelVisible = $state(false);
+  let showMobileFilters = $state(false);
+  let filters = $state<MapFilterState>(createMapFilterState());
+  let markerFilters = $derived(toMapMarkerFilters(filters));
+  let activeFilterCount = $derived(getActiveMapFilterCount(filters));
+  let markerFiltersKey = $derived(JSON.stringify(markerFilters));
 
   function closeTimelinePanel() {
     isTimelinePanelVisible = false;
     selectedClusterBBox = undefined;
     selectedClusterIds = new Set();
   }
+
+  $effect(() => {
+    void markerFiltersKey;
+    closeTimelinePanel();
+  });
 
   onDestroy(() => {
     assetViewerManager.showAssetViewer(false);
@@ -54,35 +73,68 @@
 
 {#if featureFlagsManager.value.map}
   <UserPageLayout title={data.meta.title}>
-    <div class="isolate flex size-full flex-col sm:flex-row">
-      <div
-        class={[
-          'min-h-0',
-          isTimelinePanelVisible ? 'h-1/2 w-full pb-2 sm:h-full sm:w-2/3 sm:pe-2 sm:pb-0' : 'size-full',
-        ]}
+    {#snippet buttons()}
+      <Button
+        class="sm:hidden"
+        size="small"
+        variant="ghost"
+        color="secondary"
+        leadingIcon={mdiFilterVariant}
+        onclick={() => (showMobileFilters = true)}
       >
-        {#await import('$lib/components/shared-components/map/Map.svelte')}
-          {#await delay(timeToLoadTheMap) then}
-            <!-- show the loading spinner only if loading the map takes too much time -->
-            <div class="flex size-full items-center justify-center">
-              <LoadingSpinner />
-            </div>
-          {/await}
-        {:then { default: Map }}
-          <Map hash onSelect={onViewAssets} {onClusterSelect} />
-        {/await}
+        {$t('filters')}{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+      </Button>
+    {/snippet}
+
+    <div class="isolate flex size-full">
+      <div class="hidden h-full sm:block">
+        <MapFilterPanel bind:filters />
       </div>
 
-      {#if isTimelinePanelVisible && selectedClusterBBox}
-        <div class="h-1/2 min-h-0 w-full pt-2 sm:h-full sm:w-1/3 sm:ps-2 sm:pt-0">
-          <MapTimelinePanel
-            bbox={selectedClusterBBox}
-            {selectedClusterIds}
-            assetCount={selectedClusterIds.size}
-            onClose={closeTimelinePanel}
-          />
+      {#if showMobileFilters}
+        <div class="fixed inset-0 z-30 sm:hidden">
+          <button
+            type="button"
+            class="absolute inset-0 bg-black/50"
+            aria-label={$t('close')}
+            onclick={() => (showMobileFilters = false)}
+          ></button>
+          <div class="absolute inset-y-0 inset-s-0 w-80 max-w-[90vw] shadow-xl">
+            <MapFilterPanel bind:filters onClose={() => (showMobileFilters = false)} />
+          </div>
         </div>
       {/if}
+
+      <div class="flex min-h-0 min-w-0 flex-1 flex-col sm:flex-row">
+        <div
+          class={[
+            'relative min-h-0',
+            isTimelinePanelVisible ? 'h-1/2 w-full pb-2 sm:h-full sm:w-2/3 sm:pe-2 sm:pb-0' : 'size-full',
+          ]}
+        >
+          {#await import('$lib/components/shared-components/map/Map.svelte')}
+            {#await delay(timeToLoadTheMap) then}
+              <!-- show the loading spinner only if loading the map takes too much time -->
+              <div class="flex size-full items-center justify-center">
+                <LoadingSpinner />
+              </div>
+            {/await}
+          {:then { default: Map }}
+            <Map hash onSelect={onViewAssets} {onClusterSelect} {markerFilters} />
+          {/await}
+        </div>
+
+        {#if isTimelinePanelVisible && selectedClusterBBox}
+          <div class="h-1/2 min-h-0 w-full pt-2 sm:h-full sm:w-1/3 sm:ps-2 sm:pt-0">
+            <MapTimelinePanel
+              bbox={selectedClusterBBox}
+              {selectedClusterIds}
+              assetCount={selectedClusterIds.size}
+              onClose={closeTimelinePanel}
+            />
+          </div>
+        {/if}
+      </div>
     </div>
   </UserPageLayout>
   <Portal target="body">

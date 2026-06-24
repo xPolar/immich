@@ -4964,11 +4964,21 @@ export function validate({ id, validateLibraryDto }: {
 /**
  * Retrieve map markers
  */
-export function getMapMarkers({ fileCreatedAfter, fileCreatedBefore, isArchived, isFavorite, withPartners, withSharedAlbums }: {
+export function getMapMarkers({ fileCreatedAfter, fileCreatedBefore, isArchived, isFavorite, isUnrated, lensModel, make, model, personIds, rating, tagIds, takenAfter, takenBefore, $type, withPartners, withSharedAlbums }: {
     fileCreatedAfter?: string;
     fileCreatedBefore?: string;
     isArchived?: boolean;
     isFavorite?: boolean;
+    isUnrated?: boolean;
+    lensModel?: string;
+    make?: string;
+    model?: string;
+    personIds?: string[];
+    rating?: number;
+    tagIds?: string[];
+    takenAfter?: string;
+    takenBefore?: string;
+    $type?: AssetTypeEnum;
     withPartners?: boolean;
     withSharedAlbums?: boolean;
 }, opts?: Oazapfts.RequestOpts) {
@@ -4980,6 +4990,16 @@ export function getMapMarkers({ fileCreatedAfter, fileCreatedBefore, isArchived,
         fileCreatedBefore,
         isArchived,
         isFavorite,
+        isUnrated,
+        lensModel,
+        make,
+        model,
+        personIds,
+        rating,
+        tagIds,
+        takenAfter,
+        takenBefore,
+        "type": $type,
         withPartners,
         withSharedAlbums
     }))}`, {

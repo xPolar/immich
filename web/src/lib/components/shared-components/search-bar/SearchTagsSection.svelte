@@ -10,9 +10,10 @@
 
   interface Props {
     selectedTags: SvelteSet<string> | null;
+    showUntagged?: boolean;
   }
 
-  let { selectedTags = $bindable() }: Props = $props();
+  let { selectedTags = $bindable(), showUntagged = true }: Props = $props();
 
   let allTags: TagResponseDto[] = $state([]);
   let tagMap = $derived(Object.fromEntries(allTags.map((tag) => [tag.id, tag])));
@@ -56,17 +57,19 @@
           placeholder={$t('search_tags')}
         />
       </div>
-      <div class="flex items-center gap-2">
-        <Checkbox
-          id="untagged-checkbox"
-          size="tiny"
-          checked={selectedTags === null}
-          onCheckedChange={(checked) => {
-            selectedTags = checked ? null : new SvelteSet();
-          }}
-        />
-        <Label label={$t('untagged')} for="untagged-checkbox" class="text-sm font-normal" />
-      </div>
+      {#if showUntagged}
+        <div class="flex items-center gap-2">
+          <Checkbox
+            id="untagged-checkbox"
+            size="tiny"
+            checked={selectedTags === null}
+            onCheckedChange={(checked) => {
+              selectedTags = checked ? null : new SvelteSet();
+            }}
+          />
+          <Label label={$t('untagged')} for="untagged-checkbox" class="text-sm font-normal" />
+        </div>
+      {/if}
     </form>
 
     <section class="flex flex-wrap gap-1 pt-2">

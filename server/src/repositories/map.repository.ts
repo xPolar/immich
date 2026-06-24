@@ -7,19 +7,30 @@ import { readFile } from 'node:fs/promises';
 import readLine from 'node:readline';
 import { citiesFile, reverseGeocodeMaxDistance } from 'src/constants';
 import { DummyValue, GenerateSql } from 'src/decorators';
-import { AssetVisibility, SystemMetadataKey } from 'src/enum';
+import { AssetType, AssetVisibility, SystemMetadataKey } from 'src/enum';
 import { ConfigRepository } from 'src/repositories/config.repository';
 import { LoggingRepository } from 'src/repositories/logging.repository';
 import { SystemMetadataRepository } from 'src/repositories/system-metadata.repository';
 import { DB } from 'src/schema';
 import { GeodataPlacesTable } from 'src/schema/tables/geodata-places.table';
 import { NaturalEarthCountriesTable } from 'src/schema/tables/natural-earth-countries.table';
+import { anyUuid } from 'src/utils/database';
 
 export interface MapMarkerSearchOptions {
   isArchived?: boolean;
   isFavorite?: boolean;
   fileCreatedBefore?: Date;
   fileCreatedAfter?: Date;
+  takenBefore?: Date;
+  takenAfter?: Date;
+  personIds?: string[];
+  tagIds?: string[];
+  make?: string;
+  model?: string;
+  lensModel?: string;
+  rating?: number;
+  isUnrated?: boolean;
+  type?: AssetType;
 }
 
 export interface GeoPoint {
@@ -83,8 +94,25 @@ export class MapRepository {
     authUserId: string,
     ownerIds: string[],
     albumIds: string[],
-    { isArchived, isFavorite, fileCreatedAfter, fileCreatedBefore }: MapMarkerSearchOptions = {},
+    {
+      isArchived,
+      isFavorite,
+      fileCreatedAfter,
+      fileCreatedBefore,
+      takenAfter,
+      takenBefore,
+      personIds,
+      tagIds,
+      make,
+      model,
+      lensModel,
+      rating,
+      isUnrated,
+      type,
+    }: MapMarkerSearchOptions = {},
   ) {
+    const uniquePersonIds = personIds ? [...new Set(personIds)] : undefined;
+
     return this.mapMarkersQuery()
       .$if(isArchived === true, (qb) =>
         qb.where((eb) =>
@@ -100,6 +128,41 @@ export class MapRepository {
       .$if(isFavorite !== undefined, (q) => q.where('isFavorite', '=', isFavorite!))
       .$if(fileCreatedAfter !== undefined, (q) => q.where('fileCreatedAt', '>=', fileCreatedAfter!))
       .$if(fileCreatedBefore !== undefined, (q) => q.where('fileCreatedAt', '<=', fileCreatedBefore!))
+      .$if(takenAfter !== undefined, (q) => q.where('fileCreatedAt', '>=', takenAfter!))
+      .$if(takenBefore !== undefined, (q) => q.where('fileCreatedAt', '<=', takenBefore!))
+      .$if(uniquePersonIds !== undefined && uniquePersonIds.length > 0, (q) =>
+        q.where((eb) =>
+          eb.exists(
+            eb
+              .selectFrom('asset_face')
+              .select('asset_face.assetId')
+              .whereRef('asset_face.assetId', '=', 'asset.id')
+              .where('asset_face.personId', '=', anyUuid(uniquePersonIds!))
+              .where('asset_face.deletedAt', 'is', null)
+              .where('asset_face.isVisible', 'is', true)
+              .groupBy('asset_face.assetId')
+              .having((eb) => eb.fn.count('asset_face.personId').distinct(), '=', uniquePersonIds!.length),
+          ),
+        ),
+      )
+      .$if(tagIds !== undefined && tagIds.length > 0, (q) =>
+        q.where((eb) =>
+          eb.exists(
+            eb
+              .selectFrom('tag_asset')
+              .innerJoin('tag_closure', 'tag_asset.tagId', 'tag_closure.id_descendant')
+              .select('tag_asset.assetId')
+              .whereRef('tag_asset.assetId', '=', 'asset.id')
+              .where('tag_closure.id_ancestor', '=', anyUuid(tagIds!)),
+          ),
+        ),
+      )
+      .$if(make !== undefined, (q) => q.where('asset_exif.make', '=', make!))
+      .$if(model !== undefined, (q) => q.where('asset_exif.model', '=', model!))
+      .$if(lensModel !== undefined, (q) => q.where('asset_exif.lensModel', '=', lensModel!))
+      .$if(rating !== undefined, (q) => q.where('asset_exif.rating', '>=', rating!))
+      .$if(isUnrated === true, (q) => q.where('asset_exif.rating', 'is', null))
+      .$if(type !== undefined, (q) => q.where('asset.type', '=', type!))
       .where((eb) => {
         const expression: Expression<SqlBool>[] = [];
 

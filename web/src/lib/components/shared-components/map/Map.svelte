@@ -33,6 +33,7 @@
   } from 'maplibre-gl';
   import { onDestroy, onMount, untrack } from 'svelte';
   import { t } from 'svelte-i18n';
+  import type { MapMarkerFilters } from './map-filter';
   import {
     AttributionControl,
     Control,
@@ -66,6 +67,7 @@
     rounded?: boolean;
     showSimpleControls?: boolean;
     autoFitBounds?: boolean;
+    markerFilters?: MapMarkerFilters;
   }
 
   let {
@@ -85,6 +87,7 @@
     rounded = false,
     showSimpleControls = true,
     autoFitBounds = true,
+    markerFilters,
   }: Props = $props();
 
   // Calculate initial bounds from markers once during initialization
@@ -103,6 +106,9 @@
   let map: Map | undefined = $state();
   let marker: Marker | null = null;
   let abortController: AbortController;
+  let mounted = $state(false);
+  let markerFiltersKey = $derived(JSON.stringify(markerFilters));
+  let previousMarkerFiltersKey: string | undefined;
 
   const mapTheme = $derived($mapSettings.allowDarkMode ? themeManager.value : Theme.Light);
   const styleUrl = $derived(
@@ -225,16 +231,17 @@
     abortController = new AbortController();
 
     const { includeArchived, onlyFavorites, withPartners, withSharedAlbums } = $mapSettings;
-    const { fileCreatedAfter, fileCreatedBefore } = getFileCreatedDates();
+    const { fileCreatedAfter, fileCreatedBefore } = markerFilters ? {} : getFileCreatedDates();
 
     return await getMapMarkers(
       {
         isArchived: includeArchived || undefined,
-        isFavorite: onlyFavorites || undefined,
+        isFavorite: markerFilters ? undefined : onlyFavorites || undefined,
         fileCreatedAfter,
         fileCreatedBefore,
         withPartners: withPartners || undefined,
         withSharedAlbums: withSharedAlbums || undefined,
+        ...markerFilters,
       },
       {
         signal: abortController.signal,
@@ -242,14 +249,26 @@
     );
   }
 
+  const refreshMapMarkers = async () => {
+    try {
+      mapMarkers = await loadMapMarkers();
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        return;
+      }
+
+      throw error;
+    }
+  };
+
   const handleSettingsClick = async () => {
-    const settings = await modalManager.show(MapSettingsModal);
+    const settings = await modalManager.show(MapSettingsModal, { showFilters: !markerFilters });
     if (settings) {
       const shouldUpdate = !isEqual(omit(settings, 'allowDarkMode'), omit($mapSettings, 'allowDarkMode'));
       $mapSettings = settings;
 
       if (shouldUpdate) {
-        mapMarkers = await loadMapMarkers();
+        await refreshMapMarkers();
       }
     }
   };
@@ -266,13 +285,26 @@
   });
 
   onMount(async () => {
+    previousMarkerFiltersKey = markerFiltersKey;
     if (!mapMarkers) {
-      mapMarkers = await loadMapMarkers();
+      await refreshMapMarkers();
     }
+    mounted = true;
   });
 
   onDestroy(() => {
     abortController?.abort();
+  });
+
+  $effect(() => {
+    const currentMarkerFiltersKey = markerFiltersKey;
+    if (!mounted || currentMarkerFiltersKey === previousMarkerFiltersKey) {
+      return;
+    }
+
+    previousMarkerFiltersKey = currentMarkerFiltersKey;
+    const timeout = setTimeout(() => handlePromiseError(refreshMapMarkers()), 200);
+    return () => clearTimeout(timeout);
   });
 
   $effect(() => {
@@ -311,7 +343,7 @@
   });
 
   const onAssetsDelete = async () => {
-    mapMarkers = await loadMapMarkers();
+    await refreshMapMarkers();
   };
 </script>
 
