@@ -52,6 +52,49 @@ describe('resolveTypedSearchPhotoSuggestions', () => {
     }
   });
 
+  it('combines smart text with resolved filters', async () => {
+    await resolveTypedSearchPhotoSuggestions({
+      query: 'tower',
+      mode: 'smart',
+      filters: { city: 'Agoura', isFavorite: false },
+    });
+
+    expect(searchSmart).toHaveBeenCalledWith(
+      {
+        smartSearchDto: {
+          city: 'Agoura',
+          isFavorite: false,
+          query: 'tower',
+          size: 5,
+          withExif: true,
+          language: undefined,
+        },
+      },
+      { signal: undefined },
+    );
+  });
+
+  it('uses metadata search for a filter-only expression regardless of text mode', async () => {
+    await resolveTypedSearchPhotoSuggestions({
+      query: '',
+      mode: 'ocr',
+      filters: { city: 'Agoura', personIds: ['person-id'] },
+    });
+
+    expect(searchSmart).not.toHaveBeenCalled();
+    expect(searchAssets).toHaveBeenCalledWith(
+      {
+        metadataSearchDto: {
+          city: 'Agoura',
+          personIds: ['person-id'],
+          size: 5,
+          withExif: true,
+        },
+      },
+      { signal: undefined },
+    );
+  });
+
   it.each([
     ['metadata', { originalFileName: 'tower' }],
     ['description', { description: 'tower' }],

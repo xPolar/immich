@@ -19,6 +19,7 @@ export type TypedSearchPhotoStatus =
 export type TypedSearchPhotoContext = {
   query: string;
   mode: TypedSearchPhotoMode;
+  filters?: SmartSearchDto;
   language?: string;
   signal?: AbortSignal;
 };
@@ -28,19 +29,21 @@ const photoResultLimit = 5;
 export async function resolveTypedSearchPhotoSuggestions({
   query,
   mode,
+  filters = {},
   language,
   signal,
 }: TypedSearchPhotoContext): Promise<TypedSearchPhotoStatus> {
   const normalizedQuery = query.trim();
-  if (!normalizedQuery) {
+  const hasFilters = Object.keys(filters).length > 0;
+  if (!normalizedQuery && !hasFilters) {
     return { status: 'idle' };
   }
 
   try {
     const items =
-      mode === 'smart'
-        ? await searchSmartPhotos(normalizedQuery, language, signal)
-        : await searchMetadataPhotos(normalizedQuery, mode, signal);
+      mode === 'smart' && normalizedQuery
+        ? await searchSmartPhotos(normalizedQuery, filters, language, signal)
+        : await searchMetadataPhotos(normalizedQuery, mode, filters, signal);
     return items.length === 0 ? { status: 'empty' } : { status: 'ok', items, total: items.length };
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
@@ -54,8 +57,9 @@ export async function resolveTypedSearchPhotoSuggestions({
   }
 }
 
-async function searchSmartPhotos(query: string, language?: string, signal?: AbortSignal) {
+async function searchSmartPhotos(query: string, filters: SmartSearchDto, language?: string, signal?: AbortSignal) {
   const smartSearchDto: SmartSearchDto = {
+    ...filters,
     query,
     size: photoResultLimit,
     withExif: true,
@@ -65,14 +69,20 @@ async function searchSmartPhotos(query: string, language?: string, signal?: Abor
   return response.assets.items.slice(0, photoResultLimit);
 }
 
-async function searchMetadataPhotos(query: string, mode: Exclude<TypedSearchPhotoMode, 'smart'>, signal?: AbortSignal) {
+async function searchMetadataPhotos(
+  query: string,
+  mode: TypedSearchPhotoMode,
+  filters: SmartSearchDto,
+  signal?: AbortSignal,
+) {
   const metadataSearchDto: MetadataSearchDto = {
+    ...filters,
     size: photoResultLimit,
     withExif: true,
-    ...(mode === 'metadata' ? { originalFileName: query } : {}),
-    ...(mode === 'description' ? { description: query } : {}),
-    ...(mode === 'fullPath' ? { originalPath: query } : {}),
-    ...(mode === 'ocr' ? { ocr: query } : {}),
+    ...(query && mode === 'metadata' ? { originalFileName: query } : {}),
+    ...(query && mode === 'description' ? { description: query } : {}),
+    ...(query && mode === 'fullPath' ? { originalPath: query } : {}),
+    ...(query && mode === 'ocr' ? { ocr: query } : {}),
   };
   const response = await searchAssets({ metadataSearchDto }, { signal });
   return response.assets.items.slice(0, photoResultLimit);

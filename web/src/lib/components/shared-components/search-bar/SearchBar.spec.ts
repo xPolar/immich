@@ -209,6 +209,60 @@ describe('SearchBar inline filters', () => {
     await user.keyboard('[ArrowDown][Enter]');
     expect(goto).toHaveBeenLastCalledWith('/photos/asset-1');
   });
+
+  it('previews filter-only city results in OCR mode', async () => {
+    const user = userEvent.setup();
+    localStorage.setItem('searchQueryType', 'ocr');
+    vi.mocked(getSearchSuggestions).mockResolvedValue(['Agoura']);
+    vi.mocked(searchAssets).mockResolvedValue(searchResponse([{ id: 'asset-1', originalFileName: 'agoura.jpg' }]));
+    render(SearchBarTest);
+
+    await user.type(screen.getByRole('combobox'), 'city:Agoura');
+
+    expect(await screen.findByRole('option', { name: 'agoura.jpg' })).toBeInTheDocument();
+    expect(searchAssets).toHaveBeenLastCalledWith(
+      {
+        metadataSearchDto: {
+          city: 'Agoura',
+          size: 5,
+          withExif: true,
+        },
+      },
+      expect.anything(),
+    );
+  });
+
+  it('previews filter-only person results after an exact resolution', async () => {
+    const user = userEvent.setup();
+    vi.mocked(searchPerson).mockResolvedValue([{ id: 'haris-id', name: 'Haris' }] as never);
+    vi.mocked(searchAssets).mockResolvedValue(searchResponse([{ id: 'asset-1', originalFileName: 'haris.jpg' }]));
+    render(SearchBarTest);
+
+    await user.type(screen.getByRole('combobox'), 'person:haris');
+
+    expect(await screen.findByRole('option', { name: 'haris.jpg' })).toBeInTheDocument();
+    expect(searchAssets).toHaveBeenLastCalledWith(
+      {
+        metadataSearchDto: {
+          personIds: ['haris-id'],
+          size: 5,
+          withExif: true,
+        },
+      },
+      expect.anything(),
+    );
+  });
+
+  it('shows no results found for an empty filtered preview', async () => {
+    const user = userEvent.setup();
+    vi.mocked(getSearchSuggestions).mockResolvedValue(['Agoura']);
+    render(SearchBarTest);
+
+    await user.type(screen.getByRole('combobox'), 'city:Agoura');
+
+    expect(await screen.findByText('No results found')).toBeInTheDocument();
+    expect(screen.getByText('Photos')).toBeInTheDocument();
+  });
 });
 
 function getSearchPayload(url: string) {

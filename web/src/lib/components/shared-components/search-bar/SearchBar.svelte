@@ -275,7 +275,8 @@
 
   function schedulePhotoSearchSuggestions(parsed: TypedSearchParseResult) {
     const query = parsed.queryText.trim();
-    if (!query || isComposing) {
+    const hasFilters = parsed.scalarTokens.length > 0 || parsed.resolutionTokens.length > 0;
+    if ((!query && !hasFilters) || isComposing || parsed.issues.length > 0) {
       resetPhotoSearchSuggestions();
       return;
     }
@@ -291,7 +292,22 @@
       const timeoutSignal = AbortSignal.timeout(15_000);
       const signal = AbortSignal.any([controller.signal, timeoutSignal]);
 
-      resolveTypedSearchPhotoSuggestions({ query, mode, language: $lang, signal })
+      resolveTypedSearchFilters(parsed, { selectedChoices, signal })
+        .then((resolved) => {
+          if (!resolved.ok) {
+            if (resolved.issues.some((issue) => issue.code === 'no-match')) {
+              return { status: 'empty' as const };
+            }
+            return { status: 'idle' as const };
+          }
+          return resolveTypedSearchPhotoSuggestions({
+            query: resolved.queryText,
+            mode,
+            filters: resolved.filters,
+            language: $lang,
+            signal,
+          });
+        })
         .then((status) => {
           if (requestId !== photoSuggestionRequestId) {
             return;
@@ -399,6 +415,7 @@
         ? { ...token, value: choice.label, status: 'resolved-entity' as const }
         : token,
     );
+    schedulePhotoSearchSuggestions(parseTypedSearch(value, { mode: 'draft' }));
   }
 
   async function selectLiveTypedSearchChoice(choice: LiveTypedSearchChoice) {
@@ -441,6 +458,7 @@
     }
 
     applyParsedState(parsed);
+    schedulePhotoSearchSuggestions(parsed);
     activeInlineToken = undefined;
     resetLiveTypedSearchSuggestions();
     await tick();
