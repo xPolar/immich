@@ -6,10 +6,11 @@
   import { page } from '$app/state';
   import { clickOutside } from '$lib/actions/click-outside';
   import NotificationPanel from '$lib/components/shared-components/navigation-bar/NotificationPanel.svelte';
-  import SearchBar from '$lib/components/shared-components/search-bar/SearchBar.svelte';
+  import GlobalSearchInputTrigger from '$lib/components/global-search/GlobalSearchInputTrigger.svelte';
   import SkipLink from '$lib/elements/SkipLink.svelte';
   import { authManager } from '$lib/managers/auth-manager.svelte';
   import { featureFlagsManager } from '$lib/managers/feature-flags-manager.svelte';
+  import { globalSearchManager } from '$lib/managers/global-search-manager.svelte';
   import { Route } from '$lib/route';
   import { getGlobalActions } from '$lib/services/app.service';
   import { mediaQueryManager } from '$lib/stores/media-query-manager.svelte';
@@ -83,7 +84,7 @@
     <div class="flex justify-between gap-4 pe-6 lg:gap-8">
       <div class="hidden w-full max-w-5xl flex-1 sm:block tall:ps-0">
         {#if featureFlagsManager.value.search}
-          <SearchBar grayTheme={true} />
+          <GlobalSearchInputTrigger />
         {/if}
       </div>
 
@@ -95,10 +96,10 @@
             variant="ghost"
             size="medium"
             icon={mdiMagnify}
-            href={Route.search()}
             id="search-button"
             class="sm:hidden"
             aria-label={$t('go_to_search')}
+            onclick={(event: MouseEvent) => globalSearchManager.open('modal', event.currentTarget as HTMLElement)}
           />
         {/if}
 
