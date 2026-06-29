@@ -14,7 +14,7 @@
     mdiMapMarker,
     mdiTagOutline,
   } from '@mdi/js';
-  import { tick } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { t } from 'svelte-i18n';
 
   let input = $state<HTMLInputElement>();
@@ -26,8 +26,13 @@
   const activePreviewUrl = $derived(previewUrl(activeResult));
 
   $effect(() => {
-    if (manager.isOpen) {
-      void tick().then(() => input?.focus());
+    const isModalOpen = manager.isOpen && manager.presentation === 'modal';
+    if (isModalOpen) {
+      void tick().then(() => {
+        if (manager.isOpen && manager.presentation === 'modal') {
+          input?.focus();
+        }
+      });
     }
   });
 
@@ -53,7 +58,7 @@
     if (!authManager.authenticated || !featureFlagsManager.value.search) {
       return;
     }
-    if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === 'k') {
+    if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLocaleLowerCase() === 'k') {
       event.preventDefault();
       event.stopImmediatePropagation();
       manager.toggle('modal');
@@ -103,11 +108,7 @@
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
-      if (manager.query) {
-        manager.setQuery('');
-      } else {
-        manager.close();
-      }
+      manager.close();
       return;
     }
     if (event.key !== 'Tab') {
@@ -133,6 +134,11 @@
     event.preventDefault();
     focusable[next]?.focus();
   }
+
+  onMount(() => {
+    globalThis.addEventListener('keydown', globalKeydown, { capture: true });
+    return () => globalThis.removeEventListener('keydown', globalKeydown, { capture: true });
+  });
 
   function iconFor(result: GlobalSearchResult) {
     switch (result.kind) {
@@ -244,8 +250,6 @@
   }
 </script>
 
-<svelte:window onkeydown={globalKeydown} />
-
 {#if manager.isOpen && manager.presentation === 'modal' && authManager.authenticated && featureFlagsManager.value.search}
   <div
     class="fixed inset-0 z-1001 flex items-stretch justify-center bg-black/45 p-0 backdrop-blur-[2px] sm:items-start sm:px-3 sm:pt-[8vh]"
@@ -287,10 +291,10 @@
         />
         <IconButton
           icon={mdiClose}
-          aria-label={$t(manager.query ? 'clear' : 'close')}
+          aria-label={$t('close')}
           size="small"
           variant="ghost"
-          onclick={() => (manager.query ? manager.setQuery('') : manager.close())}
+          onclick={() => manager.close()}
         />
       </div>
 
@@ -431,7 +435,7 @@
       <footer
         class="flex items-center gap-4 border-t border-gray-200 px-4 py-2 text-xs text-gray-500 dark:border-gray-700"
       >
-        <span class="hidden md:inline">↑↓ Navigate · ↵ Open · Esc Clear/close · @ # / &gt;</span>
+        <span class="hidden md:inline">↑↓ Navigate · ↵ Open · Esc Close · @ # / &gt;</span>
         <div class="ms-auto flex gap-1 opacity-{manager.scope === 'all' ? '100' : '40'}">
           {#each Object.entries(modeLabels) as [mode, label] (mode)}
             <button

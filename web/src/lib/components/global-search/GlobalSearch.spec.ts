@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/svelte';
+import { tick } from 'svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import GlobalSearchTestWrapper from './GlobalSearchTestWrapper.svelte';
 
@@ -70,12 +71,42 @@ describe('GlobalSearch modal', () => {
     expect(document.activeElement).toBe(last);
   });
 
-  it('skips disabled scoped mode controls and handles Escape outside the input', async () => {
+  it('autofocuses the modal input on open', async () => {
+    render(GlobalSearchTestWrapper);
+    await tick();
+    expect(document.activeElement).toBe(screen.getByRole('textbox'));
+  });
+
+  it('captures Cmd+K before the built-in command palette shortcut', async () => {
+    render(GlobalSearchTestWrapper);
+    await tick();
+    const commandPaletteShortcut = vi.fn();
+    document.body.addEventListener('keydown', commandPaletteShortcut);
+    const event = new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true, cancelable: true });
+
+    document.body.dispatchEvent(event);
+
+    document.body.removeEventListener('keydown', commandPaletteShortcut);
+    expect(commandPaletteShortcut).not.toHaveBeenCalled();
+    expect(manager.toggle).toHaveBeenCalledWith('modal');
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it('closes on backdrop click', async () => {
+    const { container } = render(GlobalSearchTestWrapper);
+    const backdrop = container.querySelector<HTMLElement>('[role="presentation"]')!;
+
+    await fireEvent.mouseDown(backdrop);
+
+    expect(manager.close).toHaveBeenCalledOnce();
+  });
+
+  it('skips disabled scoped mode controls and closes on Escape outside the input', async () => {
     manager.scope = 'people';
     manager.query = 'cats';
     render(GlobalSearchTestWrapper);
     const input = screen.getByRole('textbox');
-    const close = screen.getByRole('button', { name: /clear/i });
+    const close = screen.getByRole('button', { name: /close/i });
 
     close.focus();
     await fireEvent.keyDown(close, { key: 'Tab' });
@@ -83,12 +114,18 @@ describe('GlobalSearch modal', () => {
 
     close.focus();
     await fireEvent.keyDown(close, { key: 'Escape' });
-    expect(manager.setQuery).toHaveBeenCalledWith('');
-    expect(manager.close).not.toHaveBeenCalled();
-
-    manager.query = '';
-    await fireEvent.keyDown(close, { key: 'Escape' });
     expect(manager.close).toHaveBeenCalledOnce();
+    expect(manager.setQuery).not.toHaveBeenCalled();
+  });
+
+  it('closes instead of clearing when Escape is pressed in a populated modal input', async () => {
+    manager.query = 'cats';
+    render(GlobalSearchTestWrapper);
+
+    await fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' });
+
+    expect(manager.close).toHaveBeenCalledOnce();
+    expect(manager.setQuery).not.toHaveBeenCalled();
   });
 
   it('labels a promoted command as the Top result', () => {
