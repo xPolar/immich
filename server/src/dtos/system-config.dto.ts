@@ -279,10 +279,26 @@ const SystemConfigReverseGeocodingSchema = z
   .object({ enabled: configBool.describe('Enabled') })
   .meta({ id: 'SystemConfigReverseGeocodingDto' });
 
+const SystemConfigDawarichSchema = z
+  .object({
+    enabled: configBool.describe('Enabled'),
+    url: z
+      .string()
+      .refine((url) => url.length === 0 || z.url().safeParse(url).success, {
+        error: 'Dawarich URL must be an empty string or a valid URL',
+      })
+      .describe('Dawarich URL'),
+    apiKey: z.string().describe('API key'),
+    matchWindowMinutes: z.int().min(1).max(1440).describe('Match window in minutes'),
+  })
+  .meta({ id: 'SystemConfigDawarichDto' });
+
 const SystemConfigFacesSchema = z
   .object({ import: configBool.describe('Import') })
   .meta({ id: 'SystemConfigFacesDto' });
-const SystemConfigMetadataSchema = z.object({ faces: SystemConfigFacesSchema }).meta({ id: 'SystemConfigMetadataDto' });
+const SystemConfigMetadataSchema = z
+  .object({ dawarich: SystemConfigDawarichSchema, faces: SystemConfigFacesSchema })
+  .meta({ id: 'SystemConfigMetadataDto' });
 
 const SystemConfigServerSchema = z
   .object({

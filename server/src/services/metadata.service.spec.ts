@@ -90,6 +90,7 @@ describe(MetadataService.name, () => {
 
   afterEach(async () => {
     await sut.onShutdown();
+    vi.restoreAllMocks();
   });
 
   it('should be defined', () => {
@@ -390,6 +391,84 @@ describe(MetadataService.name, () => {
         width: null,
         height: null,
       });
+    });
+
+    it('should geotag an image from Dawarich points when GPS metadata is missing', async () => {
+      const timestamp = new Date('2024-02-03T12:00:00.000Z');
+      const asset = AssetFactory.from({
+        fileCreatedAt: timestamp,
+        fileModifiedAt: timestamp,
+        localDateTime: timestamp,
+      }).build();
+      mocks.assetJob.getForMetadataExtraction.mockResolvedValue(getForMetadataExtraction(asset));
+      mocks.systemMetadata.get.mockResolvedValue({
+        metadata: {
+          dawarich: {
+            enabled: true,
+            url: 'https://dawarich.example.com',
+            apiKey: 'secret',
+            matchWindowMinutes: 60,
+          },
+        },
+        reverseGeocoding: { enabled: false },
+      });
+      mocks.storage.stat.mockResolvedValue({
+        size: 123_456,
+        mtime: timestamp,
+        mtimeMs: timestamp.valueOf(),
+        birthtimeMs: timestamp.valueOf(),
+      } as Stats);
+      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+        ok: true,
+        headers: new Headers({ 'X-Total-Pages': '1' }),
+        json: () =>
+          Promise.resolve([
+            { latitude: 10, longitude: 20, timestamp: '2024-02-03T11:30:00.000Z' },
+            { latitude: 20, longitude: 40, timestamp: '2024-02-03T12:30:00.000Z' },
+          ]),
+      } as Response);
+
+      await sut.handleMetadataExtraction({ id: asset.id });
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(String(fetchMock.mock.calls[0][0])).toContain('/api/v1/points?');
+      expect(mocks.asset.upsertExif).toHaveBeenCalledWith(
+        expect.objectContaining({
+          exif: expect.objectContaining({ latitude: 15, longitude: 30 }),
+          lockedPropertiesBehavior: 'skip',
+        }),
+      );
+      expect(mocks.asset.updateAllExif).toHaveBeenCalledWith([asset.id], { latitude: 15, longitude: 30 });
+      expect(mocks.job.queue).toHaveBeenCalledWith({ name: JobName.SidecarWrite, data: { id: asset.id } });
+    });
+
+    it('should not query Dawarich when GPS metadata exists', async () => {
+      const asset = AssetFactory.from().exif({ latitude: 10, longitude: 20 }).build();
+      mocks.assetJob.getForMetadataExtraction.mockResolvedValue(getForMetadataExtraction(asset));
+      mocks.systemMetadata.get.mockResolvedValue({
+        metadata: {
+          dawarich: {
+            enabled: true,
+            url: 'https://dawarich.example.com',
+            apiKey: 'secret',
+            matchWindowMinutes: 60,
+          },
+        },
+        reverseGeocoding: { enabled: false },
+      });
+      mocks.storage.stat.mockResolvedValue({
+        size: 123_456,
+        mtime: asset.fileModifiedAt,
+        mtimeMs: asset.fileModifiedAt.valueOf(),
+        birthtimeMs: asset.fileCreatedAt.valueOf(),
+      } as Stats);
+      mockReadTags({ GPSLatitude: 10, GPSLongitude: 20 });
+      const fetchMock = vi.spyOn(globalThis, 'fetch');
+
+      await sut.handleMetadataExtraction({ id: asset.id });
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(mocks.asset.updateAllExif).not.toHaveBeenCalled();
     });
 
     it('should discard latitude and longitude on null island', async () => {
