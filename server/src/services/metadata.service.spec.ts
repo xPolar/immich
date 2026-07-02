@@ -401,6 +401,7 @@ describe(MetadataService.name, () => {
         localDateTime: timestamp,
       }).build();
       mocks.assetJob.getForMetadataExtraction.mockResolvedValue(getForMetadataExtraction(asset));
+      mocks.assetJob.getLockedPropertiesForMetadataExtraction.mockResolvedValue([]);
       mocks.systemMetadata.get.mockResolvedValue({
         metadata: {
           dawarich: {
@@ -469,6 +470,41 @@ describe(MetadataService.name, () => {
 
       expect(fetchMock).not.toHaveBeenCalled();
       expect(mocks.asset.updateAllExif).not.toHaveBeenCalled();
+    });
+
+    it('should not geotag from Dawarich when GPS metadata is locked', async () => {
+      const timestamp = new Date('2024-02-03T12:00:00.000Z');
+      const asset = AssetFactory.from({
+        fileCreatedAt: timestamp,
+        fileModifiedAt: timestamp,
+        localDateTime: timestamp,
+      }).build();
+      mocks.assetJob.getForMetadataExtraction.mockResolvedValue(getForMetadataExtraction(asset));
+      mocks.assetJob.getLockedPropertiesForMetadataExtraction.mockResolvedValue(['latitude']);
+      mocks.systemMetadata.get.mockResolvedValue({
+        metadata: {
+          dawarich: {
+            enabled: true,
+            url: 'https://dawarich.example.com',
+            apiKey: 'secret',
+            matchWindowMinutes: 60,
+          },
+        },
+        reverseGeocoding: { enabled: false },
+      });
+      mocks.storage.stat.mockResolvedValue({
+        size: 123_456,
+        mtime: timestamp,
+        mtimeMs: timestamp.valueOf(),
+        birthtimeMs: timestamp.valueOf(),
+      } as Stats);
+      const fetchMock = vi.spyOn(globalThis, 'fetch');
+
+      await sut.handleMetadataExtraction({ id: asset.id });
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(mocks.asset.updateAllExif).not.toHaveBeenCalled();
+      expect(mocks.job.queue).not.toHaveBeenCalledWith({ name: JobName.SidecarWrite, data: { id: asset.id } });
     });
 
     it('should discard latitude and longitude on null island', async () => {

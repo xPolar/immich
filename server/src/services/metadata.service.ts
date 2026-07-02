@@ -1100,6 +1100,11 @@ export class MetadataService extends BaseService {
       return null;
     }
 
+    const lockedProperties = await this.assetJobRepository.getLockedPropertiesForMetadataExtraction(asset.id);
+    if (lockedProperties.includes('latitude') || lockedProperties.includes('longitude')) {
+      return null;
+    }
+
     const matchWindowMs = Duration.fromObject({ minutes: config.matchWindowMinutes }).toMillis();
     const points = await this.getDawarichPoints(config, dateTimeOriginal, matchWindowMs);
     const match = this.matchDawarichPoint(points, dateTimeOriginal.getTime(), matchWindowMs);
