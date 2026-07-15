@@ -772,11 +772,56 @@ export class AssetRepository {
           )
           .$if(!!options.personId, (qb) => hasPeople(qb, [options.personId!]))
           .$if(!!options.withStacked, (qb) =>
-            qb
-              .leftJoin('stack', (join) =>
-                join.onRef('stack.id', '=', 'asset.stackId').onRef('stack.primaryAssetId', '=', 'asset.id'),
-              )
-              .where((eb) => eb.or([eb('asset.stackId', 'is', null), eb(eb.table('stack'), 'is not', null)])),
+            qb.leftJoin('stack', 'stack.id', 'asset.stackId').where((eb) => {
+              const primaryOrUnstacked = [
+                eb('asset.stackId', 'is', null),
+                eb('stack.primaryAssetId', '=', eb.ref('asset.id')),
+              ];
+              if (!options.albumId) {
+                return eb.or(primaryOrUnstacked);
+              }
+
+              return eb.or([
+                eb('asset.stackId', 'is', null),
+                eb.not(
+                  eb.exists(
+                    eb
+                      .selectFrom('asset as album_stack_asset')
+                      .innerJoin(
+                        'album_asset as album_stack_album_asset',
+                        'album_stack_album_asset.assetId',
+                        'album_stack_asset.id',
+                      )
+                      .whereRef('album_stack_asset.stackId', '=', 'asset.stackId')
+                      .where('album_stack_album_asset.albumId', '=', asUuid(options.albumId))
+                      .where('album_stack_asset.deletedAt', options.isTrashed ? 'is not' : 'is', null)
+                      .$if(options.visibility === undefined, (qb) =>
+                        qb.where('album_stack_asset.visibility', 'in', [
+                          sql.lit(AssetVisibility.Archive),
+                          sql.lit(AssetVisibility.Timeline),
+                        ]),
+                      )
+                      .$if(!!options.visibility, (qb) =>
+                        qb.where('album_stack_asset.visibility', '=', options.visibility!),
+                      )
+                      .$if(!!options.isTrashed, (qb) => qb.where('album_stack_asset.status', '!=', AssetStatus.Deleted))
+                      .where((eb) =>
+                        eb.or([
+                          eb.and([
+                            eb('album_stack_asset.id', '=', eb.ref('stack.primaryAssetId')),
+                            eb('asset.id', '!=', eb.ref('stack.primaryAssetId')),
+                          ]),
+                          eb.and([
+                            eb('asset.id', '!=', eb.ref('stack.primaryAssetId')),
+                            eb('album_stack_asset.id', '!=', eb.ref('stack.primaryAssetId')),
+                            eb('album_stack_asset.id', '<', eb.ref('asset.id')),
+                          ]),
+                        ]),
+                      ),
+                  ),
+                ),
+              ]);
+            }),
           )
           .$if(!!options.userIds, (qb) => qb.where('asset.ownerId', '=', anyUuid(options.userIds!)))
           .$if(options.isFavorite !== undefined, (qb) => qb.where('asset.isFavorite', '=', options.isFavorite!))
@@ -868,16 +913,62 @@ export class AssetRepository {
           .$if(options.isFavorite !== undefined, (qb) => qb.where('asset.isFavorite', '=', options.isFavorite!))
           .$if(!!options.withStacked, (qb) =>
             qb
-              .where((eb) =>
-                eb.not(
-                  eb.exists(
-                    eb
-                      .selectFrom('stack')
-                      .whereRef('stack.id', '=', 'asset.stackId')
-                      .whereRef('stack.primaryAssetId', '!=', 'asset.id'),
+              .where((eb) => {
+                if (!options.albumId) {
+                  return eb.not(
+                    eb.exists(
+                      eb
+                        .selectFrom('stack')
+                        .whereRef('stack.id', '=', 'asset.stackId')
+                        .whereRef('stack.primaryAssetId', '!=', 'asset.id'),
+                    ),
+                  );
+                }
+
+                return eb.or([
+                  eb('asset.stackId', 'is', null),
+                  eb.not(
+                    eb.exists(
+                      eb
+                        .selectFrom('asset as album_stack_asset')
+                        .innerJoin(
+                          'album_asset as album_stack_album_asset',
+                          'album_stack_album_asset.assetId',
+                          'album_stack_asset.id',
+                        )
+                        .innerJoin('stack as album_stack', 'album_stack.id', 'album_stack_asset.stackId')
+                        .whereRef('album_stack_asset.stackId', '=', 'asset.stackId')
+                        .where('album_stack_album_asset.albumId', '=', asUuid(options.albumId))
+                        .where('album_stack_asset.deletedAt', options.isTrashed ? 'is not' : 'is', null)
+                        .$if(options.visibility === undefined, (qb) =>
+                          qb.where('album_stack_asset.visibility', 'in', [
+                            sql.lit(AssetVisibility.Archive),
+                            sql.lit(AssetVisibility.Timeline),
+                          ]),
+                        )
+                        .$if(!!options.visibility, (qb) =>
+                          qb.where('album_stack_asset.visibility', '=', options.visibility!),
+                        )
+                        .$if(!!options.isTrashed, (qb) =>
+                          qb.where('album_stack_asset.status', '!=', AssetStatus.Deleted),
+                        )
+                        .where((eb) =>
+                          eb.or([
+                            eb.and([
+                              eb('album_stack_asset.id', '=', eb.ref('album_stack.primaryAssetId')),
+                              eb('asset.id', '!=', eb.ref('album_stack.primaryAssetId')),
+                            ]),
+                            eb.and([
+                              eb('asset.id', '!=', eb.ref('album_stack.primaryAssetId')),
+                              eb('album_stack_asset.id', '!=', eb.ref('album_stack.primaryAssetId')),
+                              eb('album_stack_asset.id', '<', eb.ref('asset.id')),
+                            ]),
+                          ]),
+                        ),
+                    ),
                   ),
-                ),
-              )
+                ]);
+              })
               .leftJoinLateral(
                 (eb) =>
                   eb
