@@ -77,6 +77,51 @@ describe(AssetRepository.name, () => {
         }),
       );
     });
+
+    it('should collapse an album stack subset to one deterministic member', async () => {
+      const { ctx, sut } = setup();
+      const { user } = await ctx.newUser();
+      const { album } = await ctx.newAlbum({ ownerId: user.id });
+      const [{ asset: primaryAsset }, { asset: stackedAsset1 }, { asset: stackedAsset2 }] = await Promise.all([
+        ctx.newAsset({ ownerId: user.id, localDateTime: new Date('2026-01-01') }),
+        ctx.newAsset({ ownerId: user.id, localDateTime: new Date('2026-01-02') }),
+        ctx.newAsset({ ownerId: user.id, localDateTime: new Date('2026-01-03') }),
+      ]);
+      await Promise.all([
+        ctx.newExif({ assetId: primaryAsset.id, make: 'Canon' }),
+        ctx.newExif({ assetId: stackedAsset1.id, make: 'Canon' }),
+        ctx.newExif({ assetId: stackedAsset2.id, make: 'Canon' }),
+      ]);
+      const { stack } = await ctx.newStack({ ownerId: user.id }, [primaryAsset.id, stackedAsset1.id, stackedAsset2.id]);
+      await ctx.newAlbumAsset({ albumId: album.id, assetId: stackedAsset1.id });
+
+      const options = { albumId: album.id, withStacked: true };
+      const auth = factory.auth({ user: { id: user.id } });
+      const singleMemberBucket = await sut.getTimeBucket('2026-01-01', options, auth);
+
+      expect(JSON.parse(singleMemberBucket.assets)).toEqual(
+        expect.objectContaining({ id: [stackedAsset1.id], stack: [[stack.id, '3']] }),
+      );
+
+      await ctx.newAlbumAsset({ albumId: album.id, assetId: stackedAsset2.id });
+
+      const collapsedBuckets = await sut.getTimeBuckets(options);
+      const collapsedBucket = await sut.getTimeBucket('2026-01-01', options, auth);
+      const deterministicAssetId = [stackedAsset1.id, stackedAsset2.id].sort()[0];
+
+      expect(collapsedBuckets).toEqual([{ timeBucket: '2026-01-01', count: 1 }]);
+      expect(JSON.parse(collapsedBucket.assets)).toEqual(
+        expect.objectContaining({ id: [deterministicAssetId], stack: [[stack.id, '3']] }),
+      );
+
+      await ctx.newAlbumAsset({ albumId: album.id, assetId: primaryAsset.id });
+
+      const primaryBucket = await sut.getTimeBucket('2026-01-01', options, auth);
+
+      expect(JSON.parse(primaryBucket.assets)).toEqual(
+        expect.objectContaining({ id: [primaryAsset.id], stack: [[stack.id, '3']] }),
+      );
+    });
   });
 
   describe('upsertExif', () => {
