@@ -137,10 +137,10 @@ describe('TimelineManager', () => {
       expect(getTimelineMonthByDate(timelineManager, { year: 2024, month: 1 })?.getAssets().length).toEqual(3);
     });
 
-    it('parses a one-member stack tuple', async () => {
+    it('parses a stack tuple', async () => {
       const bucket = structuredClone(bucketAssetsResponse['2024-01-01T00:00:00.000Z']);
       const stackId = 'stack-id';
-      bucket.stack = [[stackId, '1'], null, null];
+      bucket.stack = [[stackId, '3'], null, null];
       sdkMock.getTimeBucket.mockResolvedValue(bucket);
 
       await timelineManager.loadTimelineMonth({ year: 2024, month: 1 });
@@ -148,7 +148,7 @@ describe('TimelineManager', () => {
       expect(getTimelineMonthByDate(timelineManager, { year: 2024, month: 1 })?.getAssets()[0].stack).toEqual({
         id: stackId,
         primaryAssetId: bucket.id[0],
-        assetCount: 1,
+        assetCount: 3,
       });
     });
 

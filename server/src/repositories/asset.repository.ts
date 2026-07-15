@@ -970,33 +970,15 @@ export class AssetRepository {
                 ]);
               })
               .leftJoinLateral(
-                (eb) => {
-                  let stackQuery = eb
+                (eb) =>
+                  eb
                     .selectFrom('asset as stacked')
                     .select(sql`array[stacked."stackId"::text, count('stacked')::text]`.as('stack'))
                     .whereRef('stacked.stackId', '=', 'asset.stackId')
-                    .where('stacked.deletedAt', options.albumId && options.isTrashed ? 'is not' : 'is', null);
-
-                  if (options.albumId) {
-                    stackQuery = stackQuery
-                      .innerJoin('album_asset as stacked_album_asset', 'stacked_album_asset.assetId', 'stacked.id')
-                      .where('stacked_album_asset.albumId', '=', asUuid(options.albumId))
-                      .$if(options.visibility === undefined, (qb) =>
-                        qb.where('stacked.visibility', 'in', [
-                          sql.lit(AssetVisibility.Archive),
-                          sql.lit(AssetVisibility.Timeline),
-                        ]),
-                      )
-                      .$if(!!options.visibility, (qb) => qb.where('stacked.visibility', '=', options.visibility!));
-                    stackQuery = stackQuery.$if(!!options.isTrashed, (qb) =>
-                      qb.where('stacked.status', '!=', AssetStatus.Deleted),
-                    );
-                  } else {
-                    stackQuery = stackQuery.where('stacked.visibility', '=', AssetVisibility.Timeline);
-                  }
-
-                  return stackQuery.groupBy('stacked.stackId').as('stacked_assets');
-                },
+                    .where('stacked.deletedAt', 'is', null)
+                    .where('stacked.visibility', '=', AssetVisibility.Timeline)
+                    .groupBy('stacked.stackId')
+                    .as('stacked_assets'),
                 (join) => join.onTrue(),
               )
               .select('stack'),
