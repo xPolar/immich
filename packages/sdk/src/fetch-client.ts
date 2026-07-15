@@ -2505,7 +2505,18 @@ export type SystemConfigFacesDto = {
     /** Import */
     "import": boolean;
 };
+export type SystemConfigDawarichDto = {
+    /** API key */
+    apiKey: string;
+    /** Enabled */
+    enabled: boolean;
+    /** Match window in minutes */
+    matchWindowMinutes: number;
+    /** Dawarich URL */
+    url: string;
+};
 export type SystemConfigMetadataDto = {
+    dawarich: SystemConfigDawarichDto;
     faces: SystemConfigFacesDto;
 };
 export type SystemConfigNewVersionCheckDto = {

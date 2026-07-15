@@ -99,6 +99,12 @@ const updatedConfig = Object.freeze<SystemConfig>({
     level: LogLevel.Log,
   },
   metadata: {
+    dawarich: {
+      enabled: false,
+      url: '',
+      apiKey: '',
+      matchWindowMinutes: 60,
+    },
     faces: {
       import: false,
     },

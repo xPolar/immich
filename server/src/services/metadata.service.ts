@@ -6,6 +6,7 @@ import { DateTime, Duration } from 'luxon';
 import { Stats } from 'node:fs';
 import { constants } from 'node:fs/promises';
 import { join, parse } from 'node:path';
+import type { SystemConfig } from 'src/config';
 import { JOBS_ASSET_PAGINATION_SIZE } from 'src/constants';
 import { StorageCore } from 'src/cores/storage.core';
 import { Asset, AssetFile } from 'src/database';
@@ -41,6 +42,9 @@ import { Tasks } from 'src/utils/tasks';
 
 const POSTGRES_INT_MAX = 2_147_483_647;
 const POSTGRES_INT_MIN = -2_147_483_648;
+const DAWARICH_POINTS_PAGE_SIZE = 1000;
+const DAWARICH_POINTS_MAX_PAGES = 10;
+const DAWARICH_REQUEST_TIMEOUT = 10_000;
 
 /** look for a date from these tags (in order) */
 const EXIF_DATE_TAGS: Array<keyof ImmichTags> = [
@@ -134,6 +138,27 @@ type ImmichTagsWithFaces = ImmichTags & { RegionInfo: NonNullable<ImmichTags['Re
 type Dates = {
   dateTimeOriginal: Date;
   localDateTime: Date;
+};
+
+type DawarichConfig = SystemConfig['metadata']['dawarich'];
+
+type DawarichPoint = {
+  latitude?: number | string;
+  longitude?: number | string;
+  timestamp?: number | string;
+};
+
+type DawarichLocation = {
+  latitude: number;
+  longitude: number;
+  timestamp: number;
+};
+
+type DawarichMatch = {
+  latitude: number;
+  longitude: number;
+  deltaMs: number;
+  method: 'interpolated' | 'nearest';
 };
 
 @Injectable()
@@ -255,12 +280,22 @@ export class MetadataService extends BaseService {
     const { width, height } = this.getImageDimensions(exifTags);
     let geo: ReverseGeocodeResult = { country: null, state: null, city: null },
       latitude: number | null = null,
-      longitude: number | null = null;
+      longitude: number | null = null,
+      dawarichMatch: DawarichMatch | null = null;
     if (this.hasGeo(exifTags)) {
       latitude = Number(exifTags.GPSLatitude);
       longitude = Number(exifTags.GPSLongitude);
       if (reverseGeocoding.enabled) {
         geo = await this.mapRepository.reverseGeocode({ latitude, longitude });
+      }
+    } else {
+      dawarichMatch = await this.findDawarichMatch(metadata.dawarich, asset, dates.dateTimeOriginal);
+      if (dawarichMatch) {
+        latitude = dawarichMatch.latitude;
+        longitude = dawarichMatch.longitude;
+        if (reverseGeocoding.enabled) {
+          geo = await this.mapRepository.reverseGeocode({ latitude, longitude });
+        }
       }
     }
 
@@ -401,6 +436,14 @@ export class MetadataService extends BaseService {
     }
 
     await tasks.all();
+
+    if (dawarichMatch) {
+      await this.assetRepository.updateAllExif([asset.id], {
+        latitude: dawarichMatch.latitude,
+        longitude: dawarichMatch.longitude,
+      });
+      await this.jobRepository.queue({ name: JobName.SidecarWrite, data: { id: asset.id } });
+    }
 
     if (exifData.livePhotoCID) {
       await this.linkLivePhotos(asset, exifData);
@@ -1046,6 +1089,196 @@ export class MetadataService extends BaseService {
     const lat = Number(tags.GPSLatitude);
     const lng = Number(tags.GPSLongitude);
     return !Number.isNaN(lat) && !Number.isNaN(lng) && (lat !== 0 || lng !== 0);
+  }
+
+  private async findDawarichMatch(
+    config: DawarichConfig,
+    asset: { id: string; type: AssetType; originalPath: string },
+    dateTimeOriginal: Date,
+  ): Promise<DawarichMatch | null> {
+    if (!config.enabled || asset.type !== AssetType.Image || !config.url || !config.apiKey) {
+      return null;
+    }
+
+    const lockedProperties = await this.assetJobRepository.getLockedPropertiesForMetadataExtraction(asset.id);
+    if (lockedProperties.includes('latitude') || lockedProperties.includes('longitude')) {
+      return null;
+    }
+
+    const matchWindowMs = Duration.fromObject({ minutes: config.matchWindowMinutes }).toMillis();
+    const points = await this.getDawarichPoints(config, dateTimeOriginal, matchWindowMs);
+    const match = this.matchDawarichPoint(points, dateTimeOriginal.getTime(), matchWindowMs);
+
+    if (match) {
+      this.logger.debug(
+        `Dawarich ${match.method} location match for asset ${asset.id}: ${asset.originalPath} (${Math.round(
+          match.deltaMs / 1000,
+        )}s from asset timestamp)`,
+      );
+    }
+
+    return match;
+  }
+
+  private async getDawarichPoints(
+    config: DawarichConfig,
+    dateTimeOriginal: Date,
+    matchWindowMs: number,
+  ): Promise<DawarichLocation[]> {
+    const points: DawarichLocation[] = [];
+
+    for (let page = 1; page <= DAWARICH_POINTS_MAX_PAGES; page++) {
+      const url = this.getDawarichPointsUrl(config, dateTimeOriginal, matchWindowMs, page);
+
+      try {
+        const response = await fetch(url, { signal: AbortSignal.timeout(DAWARICH_REQUEST_TIMEOUT) });
+        if (!response.ok) {
+          this.logger.warn(`Dawarich point lookup failed with status ${response.status}`);
+          return points;
+        }
+
+        const body = await response.json();
+        if (!Array.isArray(body)) {
+          this.logger.warn('Dawarich point lookup returned an unexpected response');
+          return points;
+        }
+
+        points.push(...body.map((point) => this.parseDawarichPoint(point)).filter((point) => point !== null));
+
+        const totalPages = Number(response.headers.get('X-Total-Pages'));
+        if (body.length < DAWARICH_POINTS_PAGE_SIZE || page >= totalPages) {
+          break;
+        }
+      } catch (error: Error | any) {
+        this.logger.warn(`Dawarich point lookup failed: ${error}`);
+        return points;
+      }
+    }
+
+    return points.sort((a, b) => a.timestamp - b.timestamp);
+  }
+
+  private getDawarichPointsUrl(config: DawarichConfig, dateTimeOriginal: Date, matchWindowMs: number, page: number) {
+    const url = new URL(config.url);
+    url.pathname = [url.pathname.replace(/\/$/, ''), 'api/v1/points'].filter(Boolean).join('/');
+    url.searchParams.set('api_key', config.apiKey);
+    url.searchParams.set(
+      'start_at',
+      DateTime.fromMillis(dateTimeOriginal.getTime() - matchWindowMs)
+        .toUTC()
+        .toISO()!,
+    );
+    url.searchParams.set(
+      'end_at',
+      DateTime.fromMillis(dateTimeOriginal.getTime() + matchWindowMs)
+        .toUTC()
+        .toISO()!,
+    );
+    url.searchParams.set('order', 'asc');
+    url.searchParams.set('page', String(page));
+    url.searchParams.set('per_page', String(DAWARICH_POINTS_PAGE_SIZE));
+    return url;
+  }
+
+  private parseDawarichPoint(point: DawarichPoint): DawarichLocation | null {
+    const latitude = this.parseCoordinate(point.latitude);
+    const longitude = this.parseCoordinate(point.longitude);
+    const timestamp = this.parseDawarichTimestamp(point.timestamp);
+
+    if (
+      latitude === null ||
+      longitude === null ||
+      timestamp === null ||
+      latitude < -90 ||
+      latitude > 90 ||
+      longitude < -180 ||
+      longitude > 180
+    ) {
+      return null;
+    }
+
+    return { latitude, longitude, timestamp };
+  }
+
+  private parseCoordinate(value: number | string | undefined): number | null {
+    const coordinate = typeof value === 'number' ? value : Number.parseFloat(value ?? '');
+    return Number.isFinite(coordinate) ? coordinate : null;
+  }
+
+  private parseDawarichTimestamp(value: number | string | undefined): number | null {
+    if (typeof value === 'number') {
+      return value > 10_000_000_000 ? value : value * 1000;
+    }
+
+    if (typeof value === 'string') {
+      const numeric = Number(value);
+      if (Number.isFinite(numeric)) {
+        return numeric > 10_000_000_000 ? numeric : numeric * 1000;
+      }
+
+      const timestamp = Date.parse(value);
+      if (Number.isFinite(timestamp)) {
+        return timestamp;
+      }
+    }
+
+    return null;
+  }
+
+  private matchDawarichPoint(
+    points: DawarichLocation[],
+    assetTimestamp: number,
+    matchWindowMs: number,
+  ): DawarichMatch | null {
+    let before: DawarichLocation | null = null;
+    let after: DawarichLocation | null = null;
+    let nearest: DawarichLocation | null = null;
+
+    for (const point of points) {
+      if (point.timestamp <= assetTimestamp) {
+        before = point;
+      }
+
+      if (point.timestamp >= assetTimestamp) {
+        after ??= point;
+      }
+
+      if (!nearest || Math.abs(point.timestamp - assetTimestamp) < Math.abs(nearest.timestamp - assetTimestamp)) {
+        nearest = point;
+      }
+    }
+
+    if (
+      before &&
+      after &&
+      before.timestamp !== after.timestamp &&
+      assetTimestamp - before.timestamp <= matchWindowMs &&
+      after.timestamp - assetTimestamp <= matchWindowMs
+    ) {
+      const ratio = (assetTimestamp - before.timestamp) / (after.timestamp - before.timestamp);
+      return {
+        latitude: before.latitude + (after.latitude - before.latitude) * ratio,
+        longitude: before.longitude + (after.longitude - before.longitude) * ratio,
+        deltaMs: Math.min(assetTimestamp - before.timestamp, after.timestamp - assetTimestamp),
+        method: 'interpolated',
+      };
+    }
+
+    if (!nearest) {
+      return null;
+    }
+
+    const deltaMs = Math.abs(nearest.timestamp - assetTimestamp);
+    if (deltaMs > matchWindowMs) {
+      return null;
+    }
+
+    return {
+      latitude: nearest.latitude,
+      longitude: nearest.longitude,
+      deltaMs,
+      method: 'nearest',
+    };
   }
 
   private getAutoStackId(tags: ImmichTags | null): string | null {

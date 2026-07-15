@@ -113,6 +113,12 @@ export type SystemConfig = {
     enabled: boolean;
   };
   metadata: {
+    dawarich: {
+      enabled: boolean;
+      url: string;
+      apiKey: string;
+      matchWindowMinutes: number;
+    };
     faces: {
       import: boolean;
     };
@@ -330,6 +336,12 @@ export const defaults = Object.freeze<SystemConfig>({
     enabled: true,
   },
   metadata: {
+    dawarich: {
+      enabled: false,
+      url: '',
+      apiKey: '',
+      matchWindowMinutes: 60,
+    },
     faces: {
       import: false,
     },
