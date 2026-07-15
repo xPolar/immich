@@ -50,7 +50,7 @@
   import { handlePromiseError } from '$lib/utils';
   import { handleError } from '$lib/utils/handle-error';
   import { isAlbumsRoute, navigate, type AssetGridRouteSearchParams } from '$lib/utils/navigation';
-  import { AlbumUserRole, AssetVisibility, getAlbumInfo, updateAlbumInfo, type AlbumResponseDto } from '@immich/sdk';
+  import { AlbumUserRole, getAlbumInfo, updateAlbumInfo, type AlbumResponseDto } from '@immich/sdk';
   import {
     ActionButton,
     CommandPaletteDefaultProvider,
@@ -78,6 +78,7 @@
   import { t } from 'svelte-i18n';
   import { fly } from 'svelte/transition';
   import type { PageData } from './$types';
+  import { getAlbumTimelineOptions } from './album-timeline-options';
   import AlbumDescription from './AlbumDescription.svelte';
   import AlbumTitle from './AlbumTitle.svelte';
 
@@ -220,16 +221,7 @@
     }
   });
 
-  const options = $derived.by(() => {
-    if (viewMode === AlbumPageViewMode.SELECT_ASSETS) {
-      return {
-        visibility: AssetVisibility.Timeline,
-        withPartners: true,
-        timelineAlbumId: albumId,
-      };
-    }
-    return { albumId, order: album.order };
-  });
+  const options = $derived(getAlbumTimelineOptions(viewMode, albumId, album.order));
 
   const isShared = $derived(viewMode === AlbumPageViewMode.SELECT_ASSETS ? false : album.albumUsers.length > 1);
 
