@@ -973,13 +973,7 @@ export class AssetRepository {
                 (eb) => {
                   let stackQuery = eb
                     .selectFrom('asset as stacked')
-                    .select(
-                      options.albumId
-                        ? sql`case when count('stacked') > 1 then array[stacked."stackId"::text, count('stacked')::text] end`.as(
-                            'stack',
-                          )
-                        : sql`array[stacked."stackId"::text, count('stacked')::text]`.as('stack'),
-                    )
+                    .select(sql`array[stacked."stackId"::text, count('stacked')::text]`.as('stack'))
                     .whereRef('stacked.stackId', '=', 'asset.stackId')
                     .where('stacked.deletedAt', options.albumId && options.isTrashed ? 'is not' : 'is', null);
 

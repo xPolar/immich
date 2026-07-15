@@ -100,7 +100,7 @@ describe(AssetRepository.name, () => {
       const singleMemberBucket = await sut.getTimeBucket('2026-01-01', options, auth);
 
       expect(JSON.parse(singleMemberBucket.assets)).toEqual(
-        expect.objectContaining({ id: [stackedAsset1.id], stack: [null] }),
+        expect.objectContaining({ id: [stackedAsset1.id], stack: [[stack.id, '1']] }),
       );
 
       await ctx.newAlbumAsset({ albumId: album.id, assetId: stackedAsset2.id });
