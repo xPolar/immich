@@ -11,6 +11,8 @@ services:
       - ${UPLOAD_LOCATION}:/data
       - /etc/localtime:/etc/localtime:ro
       - /Volumes/Storage/Photography:/external/Photography
+      - /Volumes/Storage/AthenaScreenshots:/external/AthenaScreenshots
+      - /Volumes/Storage/ApplePhotos:/external/ApplePhotos
     env_file:
       - .env
     ports:
