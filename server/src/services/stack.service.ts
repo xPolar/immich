@@ -30,7 +30,7 @@ export class StackService extends BaseService {
   async get(auth: AuthDto, id: string): Promise<StackResponseDto> {
     await this.requireAccess({ auth, permission: Permission.StackRead, ids: [id] });
     const stack = await this.findOrFail(id);
-    return mapStack(stack, { auth });
+    return mapStack(stack, { auth, stripMetadata: !!auth.sharedLink && !auth.sharedLink.showExif });
   }
 
   async update(auth: AuthDto, id: string, dto: StackUpdateDto): Promise<StackResponseDto> {

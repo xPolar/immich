@@ -36,13 +36,16 @@ export class StackCreateDto extends createZodDto(StackCreateSchema) {}
 export class StackUpdateDto extends createZodDto(StackUpdateSchema) {}
 export class StackResponseDto extends createZodDto(StackResponseSchema) {}
 
-export const mapStack = (stack: Stack, { auth }: { auth?: AuthDto }) => {
+export const mapStack = (
+  stack: Stack,
+  { auth, stripMetadata = false }: { auth?: AuthDto; stripMetadata?: boolean },
+) => {
   const primary = stack.assets.filter((asset) => asset.id === stack.primaryAssetId);
   const others = stack.assets.filter((asset) => asset.id !== stack.primaryAssetId);
 
   return {
     id: stack.id,
     primaryAssetId: stack.primaryAssetId,
-    assets: [...primary, ...others].map((asset) => mapAsset(asset, { auth })),
+    assets: [...primary, ...others].map((asset) => mapAsset(asset, { auth, stripMetadata })),
   };
 };

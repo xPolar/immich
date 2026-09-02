@@ -241,15 +241,26 @@ class AssetAccess {
       .leftJoin('asset as albumAssets', (join) =>
         join.onRef('albumAssets.id', '=', 'album_asset.assetId').on('albumAssets.deletedAt', 'is', null),
       )
+      .leftJoin('asset as albumStackAssets', (join) =>
+        join
+          .onRef('albumStackAssets.stackId', '=', 'albumAssets.stackId')
+          .on('albumStackAssets.deletedAt', 'is', null)
+          .on('albumStackAssets.visibility', 'in', [
+            sql.lit(AssetVisibility.Archive),
+            sql.lit(AssetVisibility.Timeline),
+          ]),
+      )
       .select([
         'asset.id as assetId',
         'asset.livePhotoVideoId as assetLivePhotoVideoId',
         'albumAssets.id as albumAssetId',
         'albumAssets.livePhotoVideoId as albumAssetLivePhotoVideoId',
+        'albumStackAssets.id as albumStackAssetId',
+        'albumStackAssets.livePhotoVideoId as albumStackAssetLivePhotoVideoId',
       ])
       .where('shared_link.id', '=', sharedLinkId)
       .where(
-        sql`array["asset"."id", "asset"."livePhotoVideoId", "albumAssets"."id", "albumAssets"."livePhotoVideoId"]`,
+        sql`array["asset"."id", "asset"."livePhotoVideoId", "albumAssets"."id", "albumAssets"."livePhotoVideoId", "albumStackAssets"."id", "albumStackAssets"."livePhotoVideoId"]`,
         '&&',
         sql`array[${sql.join([...assetIds])}]::uuid[] `,
       )
@@ -268,6 +279,12 @@ class AssetAccess {
           }
           if (row.albumAssetLivePhotoVideoId && assetIds.has(row.albumAssetLivePhotoVideoId)) {
             allowedIds.add(row.albumAssetLivePhotoVideoId);
+          }
+          if (row.albumStackAssetId && assetIds.has(row.albumStackAssetId)) {
+            allowedIds.add(row.albumStackAssetId);
+          }
+          if (row.albumStackAssetLivePhotoVideoId && assetIds.has(row.albumStackAssetLivePhotoVideoId)) {
+            allowedIds.add(row.albumStackAssetLivePhotoVideoId);
           }
         }
         return allowedIds;
@@ -371,6 +388,37 @@ class StackAccess {
       .select('stack.id')
       .where('stack.id', 'in', [...stackIds])
       .where('stack.ownerId', '=', userId)
+      .execute()
+      .then((stacks) => new Set(stacks.map((stack) => stack.id)));
+  }
+
+  @GenerateSql({ params: [DummyValue.UUID, DummyValue.UUID_SET] })
+  @ChunkedSet({ paramIndex: 1 })
+  async checkSharedLinkAccess(sharedLinkId: string, stackIds: Set<string>) {
+    if (stackIds.size === 0) {
+      return new Set<string>();
+    }
+
+    return this.db
+      .selectFrom('stack')
+      .select('stack.id')
+      .where('stack.id', 'in', [...stackIds])
+      .where((eb) =>
+        eb.exists(
+          eb
+            .selectFrom('shared_link')
+            .leftJoin('album', (join) =>
+              join.onRef('album.id', '=', 'shared_link.albumId').on('album.deletedAt', 'is', null),
+            )
+            .leftJoin('album_asset', 'album_asset.albumId', 'album.id')
+            .leftJoin('asset as albumAsset', (join) =>
+              join.onRef('albumAsset.id', '=', 'album_asset.assetId').on('albumAsset.deletedAt', 'is', null),
+            )
+            .select('shared_link.id')
+            .where('shared_link.id', '=', sharedLinkId)
+            .where('albumAsset.stackId', '=', eb.ref('stack.id')),
+        ),
+      )
       .execute()
       .then((stacks) => new Set(stacks.map((stack) => stack.id)));
   }
