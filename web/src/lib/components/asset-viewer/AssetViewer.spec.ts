@@ -1,4 +1,4 @@
-import { updateAsset } from '@immich/sdk';
+import { getStack, updateAsset } from '@immich/sdk';
 import { fireEvent, waitFor } from '@testing-library/svelte';
 import { getAnimateMock } from '$lib/__mocks__/animate.mock';
 import { getResizeObserverMock } from '$lib/__mocks__/resize-observer.mock';
@@ -31,8 +31,14 @@ vi.mock('@immich/sdk', async () => {
   const sdk = await vi.importActual<typeof import('@immich/sdk')>('@immich/sdk');
   return {
     ...sdk,
+    getStack: vi.fn(),
     updateAsset: vi.fn(),
   };
+});
+
+vi.mock('$lib/utils/navigation', async () => {
+  const navigation = await vi.importActual<typeof import('$lib/utils/navigation')>('$lib/utils/navigation');
+  return { ...navigation, isSharedLinkRoute: vi.fn().mockReturnValue(true) };
 });
 
 describe('AssetViewer', () => {
@@ -49,6 +55,23 @@ describe('AssetViewer', () => {
 
   afterAll(() => {
     vi.restoreAllMocks();
+  });
+
+  it('loads stacks in the asset viewer for shared links', async () => {
+    const asset = assetFactory.build({
+      id: 'jpeg-id',
+      stack: { id: 'stack-id', primaryAssetId: 'jpeg-id', assetCount: 2 },
+    });
+    const raw = assetFactory.build({ id: 'raw-id' });
+    vi.mocked(getStack).mockResolvedValue({ id: 'stack-id', primaryAssetId: asset.id, assets: [asset, raw] });
+
+    renderWithTooltips(AssetViewer, {
+      cursor: { current: asset },
+      showNavigation: false,
+      withStacked: true,
+    });
+
+    await waitFor(() => expect(getStack).toHaveBeenCalledWith({ id: 'stack-id' }));
   });
 
   it.skip('updates the top bar favorite action after pressing favorite', async () => {

@@ -60,6 +60,7 @@ export const newAccessRepositoryMock = (): IAccessRepositoryMock => {
 
     stack: {
       checkOwnerAccess: vitest.fn().mockResolvedValue(new Set()),
+      checkSharedLinkAccess: vitest.fn().mockResolvedValue(new Set()),
     },
 
     timeline: {

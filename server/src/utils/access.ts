@@ -91,6 +91,10 @@ const checkSharedLinkAccess = async (
       return sharedLink.allowUpload ? await access.album.checkSharedLinkAccess(sharedLinkId, ids) : new Set();
     }
 
+    case Permission.StackRead: {
+      return await access.stack.checkSharedLinkAccess(sharedLinkId, ids);
+    }
+
     default: {
       return new Set<string>();
     }

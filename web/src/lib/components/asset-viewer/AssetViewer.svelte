@@ -118,7 +118,7 @@
   };
 
   const refreshStack = async () => {
-    if (authManager.isSharedLink || !withStacked) {
+    if (!withStacked) {
       return;
     }
 
