@@ -1,7 +1,12 @@
+import { UnauthorizedException } from '@nestjs/common';
+import { LibraryController } from 'src/controllers/library.controller';
 import { SearchController } from 'src/controllers/search.controller';
+import { AssetOrder, MetadataKey, Permission } from 'src/enum';
 import { SearchService } from 'src/services/search.service';
 import request from 'supertest';
+import { AuthFactory } from 'test/factories/auth.factory';
 import { errorDto } from 'test/medium/responses';
+import { newUuid } from 'test/small.factory';
 import { ControllerContext, controllerSetup, mockBaseService } from 'test/utils';
 
 describe(SearchController.name, () => {
@@ -16,6 +21,68 @@ describe(SearchController.name, () => {
   beforeEach(() => {
     service.resetAllMocks();
     ctx.reset();
+  });
+
+  describe('GET /search/libraries', () => {
+    it('should require asset read permission without granting admin or shared-link access', async () => {
+      const auth = AuthFactory.create();
+      const libraries = [{ id: newUuid(), name: 'Photos' }];
+      ctx.authenticate.mockResolvedValue(auth);
+      service.getSearchLibraries.mockResolvedValue(libraries);
+
+      const { status, body } = await request(ctx.getHttpServer()).get('/search/libraries');
+
+      expect(status).toBe(200);
+      expect(body).toEqual(libraries);
+      expect(service.getSearchLibraries).toHaveBeenCalledWith(auth);
+      expect(ctx.authenticate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: {
+            adminRoute: false,
+            sharedLinkRoute: false,
+            permission: Permission.AssetRead,
+            uri: '/search/libraries',
+          },
+        }),
+      );
+    });
+
+    it('should reject unauthenticated requests', async () => {
+      ctx.authenticate.mockRejectedValue(new UnauthorizedException());
+
+      const { status } = await request(ctx.getHttpServer()).get('/search/libraries');
+
+      expect(status).toBe(401);
+      expect(service.getSearchLibraries).not.toHaveBeenCalled();
+    });
+
+    it('should leave the existing library list admin-only', () => {
+      expect(Reflect.getMetadata(MetadataKey.AuthRoute, LibraryController.prototype.getAllLibraries)).toEqual({
+        permission: Permission.LibraryRead,
+        admin: true,
+      });
+    });
+  });
+
+  describe.each(['metadata', 'smart'])('POST /search/%s library filters', (type) => {
+    it.each([newUuid(), null, undefined])('should accept libraryId %s', async (libraryId) => {
+      const auth = AuthFactory.create();
+      ctx.authenticate.mockResolvedValue(auth);
+
+      const { status } = await request(ctx.getHttpServer()).post(`/search/${type}`).send({ libraryId });
+
+      expect(status).toBe(200);
+      const search = type === 'metadata' ? service.searchMetadata : service.searchSmart;
+      expect(search).toHaveBeenCalledWith(auth, {
+        ...(libraryId === undefined ? {} : { libraryId }),
+        ...(type === 'metadata' ? { order: AssetOrder.Desc } : {}),
+      });
+    });
+
+    it('should reject an invalid library ID', async () => {
+      const { status } = await request(ctx.getHttpServer()).post(`/search/${type}`).send({ libraryId: 'invalid' });
+      expect(status).toBe(400);
+    });
   });
 
   describe('POST /search/metadata', () => {

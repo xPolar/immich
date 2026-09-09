@@ -10735,6 +10735,50 @@
         "x-immich-state": "Stable"
       }
     },
+    "/search/libraries": {
+      "get": {
+        "description": "Retrieve libraries owned by the user or partners included in their search results.",
+        "operationId": "getSearchLibraries",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SearchLibraryResponseDto"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Retrieve searchable libraries",
+        "tags": [
+          "Search"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v3.0.0",
+            "state": "Added"
+          }
+        ],
+        "x-immich-permission": "asset.read"
+      }
+    },
     "/search/metadata": {
       "post": {
         "description": "Search for assets based on various metadata criteria.",
@@ -22617,6 +22661,25 @@
         "required": [
           "counts",
           "fieldName"
+        ],
+        "type": "object"
+      },
+      "SearchLibraryResponseDto": {
+        "properties": {
+          "id": {
+            "description": "Library ID",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
+            "type": "string"
+          },
+          "name": {
+            "description": "Library name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
         ],
         "type": "object"
       },

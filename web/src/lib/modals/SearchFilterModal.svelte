@@ -2,6 +2,7 @@
   import SearchCameraSection from '$lib/components/shared-components/search-bar/SearchCameraSection.svelte';
   import SearchDateSection from '$lib/components/shared-components/search-bar/SearchDateSection.svelte';
   import SearchDisplaySection from '$lib/components/shared-components/search-bar/SearchDisplaySection.svelte';
+  import SearchLibrarySection from '$lib/components/shared-components/search-bar/SearchLibrarySection.svelte';
   import SearchLocationSection from '$lib/components/shared-components/search-bar/SearchLocationSection.svelte';
   import SearchMediaSection from '$lib/components/shared-components/search-bar/SearchMediaSection.svelte';
   import SearchPeopleSection from '$lib/components/shared-components/search-bar/SearchPeopleSection.svelte';
@@ -59,6 +60,7 @@
 
     return {
       query,
+      libraryId: searchQuery.libraryId,
       ocr: searchQuery.ocr,
       queryType: defaultQueryType(),
       queryAssetId: 'queryAssetId' in searchQuery ? searchQuery.queryAssetId : undefined,
@@ -139,6 +141,7 @@
       originalFileName: filter.queryType === 'metadata' ? query : undefined,
       description: filter.queryType === 'description' ? query : undefined,
       originalPath: filter.queryType === 'fullPath' ? filter.query.trim() || undefined : undefined,
+      libraryId: filter.libraryId,
       country: filter.location.country,
       state: filter.location.state,
       city: filter.location.city,
@@ -190,6 +193,8 @@
 
         <!-- TEXT -->
         <SearchTextSection bind:query={filter.query} bind:queryType={filter.queryType} />
+
+        <SearchLibrarySection bind:libraryId={filter.libraryId} />
 
         <!-- TAGS -->
         <SearchTagsSection bind:selectedTags={filter.tagIds} />

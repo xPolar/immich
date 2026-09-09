@@ -4,8 +4,10 @@ import { SearchSuggestionType } from 'src/dtos/search.dto';
 import { SearchService } from 'src/services/search.service';
 import { AssetFactory } from 'test/factories/asset.factory';
 import { AuthFactory } from 'test/factories/auth.factory';
+import { PartnerFactory } from 'test/factories/partner.factory';
 import { authStub } from 'test/fixtures/auth.stub';
-import { getForAsset } from 'test/mappers';
+import { getForAsset, getForPartner } from 'test/mappers';
+import { newUuid } from 'test/small.factory';
 import { newTestService, ServiceMocks } from 'test/utils';
 import { beforeEach, vitest } from 'vitest';
 
@@ -22,6 +24,36 @@ describe(SearchService.name, () => {
 
   it('should work', () => {
     expect(sut).toBeDefined();
+  });
+
+  describe('getSearchLibraries', () => {
+    it('should return only libraries from the searchable owner IDs', async () => {
+      const auth = AuthFactory.create();
+      const included = PartnerFactory.create({ sharedWithId: auth.user.id });
+      mocks.partner.getAll.mockResolvedValue(
+        [
+          included,
+          PartnerFactory.create({ sharedWithId: auth.user.id, inTimeline: false }),
+          PartnerFactory.create({ sharedById: auth.user.id }),
+        ].map((partner) => getForPartner(partner)),
+      );
+      const libraries = [{ id: newUuid(), name: 'Photos' }];
+      mocks.search.getLibraries.mockResolvedValue(libraries);
+
+      await expect(sut.getSearchLibraries(auth)).resolves.toEqual(libraries);
+
+      expect(mocks.partner.getAll).toHaveBeenCalledWith(auth.user.id);
+      expect(mocks.search.getLibraries).toHaveBeenCalledWith([auth.user.id, included.sharedById]);
+    });
+
+    it('should return an empty list when the user has no searchable libraries', async () => {
+      const auth = AuthFactory.create();
+      mocks.search.getLibraries.mockResolvedValue([]);
+
+      await expect(sut.getSearchLibraries(auth)).resolves.toEqual([]);
+
+      expect(mocks.search.getLibraries).toHaveBeenCalledWith([auth.user.id]);
+    });
   });
 
   describe('searchPerson', () => {

@@ -380,6 +380,18 @@ export class SearchRepository {
   }
 
   @GenerateSql({ params: [[DummyValue.UUID]] })
+  getLibraries(userIds: string[]) {
+    return this.db
+      .selectFrom('library')
+      .select(['id', 'name'])
+      .where('ownerId', '=', anyUuid(userIds))
+      .where('deletedAt', 'is', null)
+      .orderBy('name')
+      .orderBy('id')
+      .execute();
+  }
+
+  @GenerateSql({ params: [[DummyValue.UUID]] })
   getAssetsByCity(userIds: string[]) {
     return this.db
       .withRecursive('cte', (qb) => {

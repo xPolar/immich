@@ -1607,6 +1607,12 @@ export type SearchExploreResponseDto = {
     fieldName: string;
     items: SearchExploreItem[];
 };
+export type SearchLibraryResponseDto = {
+    /** Library ID */
+    id: string;
+    /** Library name */
+    name: string;
+};
 export type MetadataSearchDto = {
     /** Filter by album IDs */
     albumIds?: string[];
@@ -5816,6 +5822,17 @@ export function searchLargeAssets({ albumIds, city, country, createdAfter, creat
     }))}`, {
         ...opts,
         method: "POST"
+    }));
+}
+/**
+ * Retrieve searchable libraries
+ */
+export function getSearchLibraries(opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: SearchLibraryResponseDto[];
+    }>("/search/libraries", {
+        ...opts
     }));
 }
 /**

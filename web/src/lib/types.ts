@@ -72,6 +72,7 @@ export type SearchLocationFilter = {
 
 export type SearchFilter = {
   query: string;
+  libraryId?: string | null;
   ocr?: string;
   queryType: 'smart' | 'metadata' | 'description' | 'fullPath' | 'ocr';
   personIds: SvelteSet<string>;

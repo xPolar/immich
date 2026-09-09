@@ -120,6 +120,58 @@ class SearchApi {
     return null;
   }
 
+  /// Retrieve searchable libraries
+  ///
+  /// Retrieve libraries owned by the user or partners included in their search results.
+  ///
+  /// Note: This method returns the HTTP [Response].
+  Future<Response> getSearchLibrariesWithHttpInfo({ Future<void>? abortTrigger, }) async {
+    // ignore: prefer_const_declarations
+    final apiPath = r'/search/libraries';
+
+    // ignore: prefer_final_locals
+    Object? postBody;
+
+    final queryParams = <QueryParam>[];
+    final headerParams = <String, String>{};
+    final formParams = <String, String>{};
+
+    const contentTypes = <String>[];
+
+
+    return apiClient.invokeAPI(
+      apiPath,
+      'GET',
+      queryParams,
+      postBody,
+      headerParams,
+      formParams,
+      contentTypes.isEmpty ? null : contentTypes.first,
+      abortTrigger: abortTrigger,
+    );
+  }
+
+  /// Retrieve searchable libraries
+  ///
+  /// Retrieve libraries owned by the user or partners included in their search results.
+  Future<List<SearchLibraryResponseDto>?> getSearchLibraries({ Future<void>? abortTrigger, }) async {
+    final response = await getSearchLibrariesWithHttpInfo(abortTrigger: abortTrigger,);
+    if (response.statusCode >= HttpStatus.badRequest) {
+      throw ApiException(response.statusCode, await _decodeBodyBytes(response));
+    }
+    // When a remote server returns no body with a status of 204, we shall not decode it.
+    // At the time of writing this, `dart:convert` will throw an "Unexpected end of input"
+    // FormatException when trying to decode an empty string.
+    if (response.body.isNotEmpty && response.statusCode != HttpStatus.noContent) {
+      final responseBody = await _decodeBodyBytes(response);
+      return (await apiClient.deserializeAsync(responseBody, 'List<SearchLibraryResponseDto>') as List)
+        .cast<SearchLibraryResponseDto>()
+        .toList(growable: false);
+
+    }
+    return null;
+  }
+
   /// Retrieve search suggestions
   ///
   /// Retrieve search suggestions based on partial input. This endpoint is used for typeahead search features.

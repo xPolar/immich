@@ -599,6 +599,8 @@ class ApiClient {
           return SearchFacetCountResponseDto.fromJson(value);
         case 'SearchFacetResponseDto':
           return SearchFacetResponseDto.fromJson(value);
+        case 'SearchLibraryResponseDto':
+          return SearchLibraryResponseDto.fromJson(value);
         case 'SearchResponseDto':
           return SearchResponseDto.fromJson(value);
         case 'SearchStatisticsResponseDto':

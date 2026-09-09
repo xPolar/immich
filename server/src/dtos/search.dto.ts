@@ -117,6 +117,13 @@ const PlacesResponseSchema = z
   })
   .meta({ id: 'PlacesResponseDto' });
 
+const SearchLibraryResponseSchema = z
+  .object({
+    id: z.uuidv4().describe('Library ID'),
+    name: z.string().describe('Library name'),
+  })
+  .meta({ id: 'SearchLibraryResponseDto' });
+
 export enum SearchSuggestionType {
   COUNTRY = 'country',
   STATE = 'state',
@@ -154,6 +161,7 @@ export class SmartSearchDto extends createZodDto(SmartSearchSchema) {}
 export class SearchPlacesDto extends createZodDto(SearchPlacesSchema) {}
 export class SearchPeopleDto extends createZodDto(SearchPeopleSchema) {}
 export class PlacesResponseDto extends createZodDto(PlacesResponseSchema) {}
+export class SearchLibraryResponseDto extends createZodDto(SearchLibraryResponseSchema) {}
 export class SearchSuggestionRequestDto extends createZodDto(SearchSuggestionRequestSchema) {}
 
 export function mapPlaces(place: Place): PlacesResponseDto {
