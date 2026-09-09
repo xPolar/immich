@@ -14,7 +14,7 @@
   import SetVisibilityAction from '$lib/components/timeline/actions/SetVisibilityAction.svelte';
   import StackAction from '$lib/components/timeline/actions/StackAction.svelte';
   import TagAction from '$lib/components/timeline/actions/TagAction.svelte';
-  import { AssetMultiSelectManager } from '$lib/managers/asset-multi-select-manager.svelte';
+  import { AssetMultiSelectManager, assetMultiSelectManager } from '$lib/managers/asset-multi-select-manager.svelte';
   import { authManager } from '$lib/managers/auth-manager.svelte';
   import { eventManager } from '$lib/managers/event-manager.svelte';
   import { featureFlagsManager } from '$lib/managers/feature-flags-manager.svelte';
@@ -46,6 +46,7 @@
     mdiImageOutline,
     mdiShareVariantOutline,
   } from '@mdi/js';
+  import { untrack } from 'svelte';
   import { t } from 'svelte-i18n';
 
   interface Props {
@@ -107,7 +108,12 @@
   $effect(() => {
     assetInteraction.clear();
     if (isOpen && asset) {
-      assetInteraction.selectAsset(asset);
+      const target = asset;
+      assetInteraction.selectAssets(
+        untrack(() =>
+          assetMultiSelectManager.hasSelectedAsset(target.id) ? assetMultiSelectManager.assets : [target],
+        ),
+      );
     }
   });
 
