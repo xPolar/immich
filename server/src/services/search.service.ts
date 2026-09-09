@@ -9,6 +9,7 @@ import {
   MetadataSearchDto,
   PlacesResponseDto,
   RandomSearchDto,
+  SearchLibraryResponseDto,
   SearchPeopleDto,
   SearchPlacesDto,
   SearchResponseDto,
@@ -27,6 +28,11 @@ import { isSmartSearchEnabled } from 'src/utils/misc';
 @Injectable()
 export class SearchService extends BaseService {
   private embeddingCache = new LRUMap<string, string>(100);
+
+  async getSearchLibraries(auth: AuthDto): Promise<SearchLibraryResponseDto[]> {
+    const userIds = await this.getUserIdsToSearch(auth);
+    return this.searchRepository.getLibraries(userIds);
+  }
 
   async searchPerson(auth: AuthDto, dto: SearchPeopleDto): Promise<PersonResponseDto[]> {
     const people = await this.personRepository.getByName(auth.user.id, dto.name, { withHidden: dto.withHidden });

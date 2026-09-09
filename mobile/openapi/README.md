@@ -239,6 +239,7 @@ Class | Method | HTTP request | Description
 *QueuesApi* | [**updateQueue**](doc//QueuesApi.md#updatequeue) | **PUT** /queues/{name} | Update a queue
 *SearchApi* | [**getAssetsByCity**](doc//SearchApi.md#getassetsbycity) | **GET** /search/cities | Retrieve assets by city
 *SearchApi* | [**getExploreData**](doc//SearchApi.md#getexploredata) | **GET** /search/explore | Retrieve explore data
+*SearchApi* | [**getSearchLibraries**](doc//SearchApi.md#getsearchlibraries) | **GET** /search/libraries | Retrieve searchable libraries
 *SearchApi* | [**getSearchSuggestions**](doc//SearchApi.md#getsearchsuggestions) | **GET** /search/suggestions | Retrieve search suggestions
 *SearchApi* | [**searchAssetStatistics**](doc//SearchApi.md#searchassetstatistics) | **POST** /search/statistics | Search asset statistics
 *SearchApi* | [**searchAssets**](doc//SearchApi.md#searchassets) | **POST** /search/metadata | Search assets by metadata
@@ -557,6 +558,7 @@ Class | Method | HTTP request | Description
  - [SearchExploreResponseDto](doc//SearchExploreResponseDto.md)
  - [SearchFacetCountResponseDto](doc//SearchFacetCountResponseDto.md)
  - [SearchFacetResponseDto](doc//SearchFacetResponseDto.md)
+ - [SearchLibraryResponseDto](doc//SearchLibraryResponseDto.md)
  - [SearchResponseDto](doc//SearchResponseDto.md)
  - [SearchStatisticsResponseDto](doc//SearchStatisticsResponseDto.md)
  - [SearchSuggestionType](doc//SearchSuggestionType.md)

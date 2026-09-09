@@ -10,6 +10,7 @@ import {
   PlacesResponseDto,
   RandomSearchDto,
   SearchExploreResponseDto,
+  SearchLibraryResponseDto,
   SearchPeopleDto,
   SearchPlacesDto,
   SearchResponseDto,
@@ -130,6 +131,17 @@ export class SearchController {
   })
   getAssetsByCity(@Auth() auth: AuthDto): Promise<AssetResponseDto[]> {
     return this.service.getAssetsByCity(auth);
+  }
+
+  @Get('libraries')
+  @Authenticated({ permission: Permission.AssetRead })
+  @Endpoint({
+    summary: 'Retrieve searchable libraries',
+    description: 'Retrieve libraries owned by the user or partners included in their search results.',
+    history: new HistoryBuilder().added('v3.0.0'),
+  })
+  getSearchLibraries(@Auth() auth: AuthDto): Promise<SearchLibraryResponseDto[]> {
+    return this.service.getSearchLibraries(auth);
   }
 
   @Get('suggestions')

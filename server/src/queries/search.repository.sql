@@ -162,6 +162,19 @@ order by
 limit
   $9
 
+-- SearchRepository.getLibraries
+select
+  "id",
+  "name"
+from
+  "library"
+where
+  "ownerId" = any ($1::uuid[])
+  and "deletedAt" is null
+order by
+  "name",
+  "id"
+
 -- SearchRepository.getAssetsByCity
 with recursive
   "cte" as (
