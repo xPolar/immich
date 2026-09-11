@@ -6429,13 +6429,18 @@ export function deleteStack({ id }: {
 /**
  * Retrieve a stack
  */
-export function getStack({ id }: {
+export function getStack({ id, key, slug }: {
     id: string;
+    key?: string;
+    slug?: string;
 }, opts?: Oazapfts.RequestOpts) {
     return oazapfts.ok(oazapfts.fetchJson<{
         status: 200;
         data: StackResponseDto;
-    }>(`/stacks/${encodeURIComponent(id)}`, {
+    }>(`/stacks/${encodeURIComponent(id)}${QS.query(QS.explode({
+        key,
+        slug
+    }))}`, {
         ...opts
     }));
 }

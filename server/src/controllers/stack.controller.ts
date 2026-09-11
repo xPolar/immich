@@ -50,7 +50,7 @@ export class StackController {
   }
 
   @Get(':id')
-  @Authenticated({ permission: Permission.StackRead })
+  @Authenticated({ permission: Permission.StackRead, sharedLink: true })
   @Endpoint({
     summary: 'Retrieve a stack',
     description: 'Retrieve a specific stack by its ID.',

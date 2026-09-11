@@ -181,7 +181,11 @@ class StacksApi {
   /// Parameters:
   ///
   /// * [String] id (required):
-  Future<Response> getStackWithHttpInfo(String id, { Future<void>? abortTrigger, }) async {
+  ///
+  /// * [String] key:
+  ///
+  /// * [String] slug:
+  Future<Response> getStackWithHttpInfo(String id, { String? key, String? slug, Future<void>? abortTrigger, }) async {
     // ignore: prefer_const_declarations
     final apiPath = r'/stacks/{id}'
       .replaceAll('{id}', id);
@@ -192,6 +196,13 @@ class StacksApi {
     final queryParams = <QueryParam>[];
     final headerParams = <String, String>{};
     final formParams = <String, String>{};
+
+    if (key != null) {
+      queryParams.addAll(_queryParams('', 'key', key));
+    }
+    if (slug != null) {
+      queryParams.addAll(_queryParams('', 'slug', slug));
+    }
 
     const contentTypes = <String>[];
 
@@ -215,8 +226,12 @@ class StacksApi {
   /// Parameters:
   ///
   /// * [String] id (required):
-  Future<StackResponseDto?> getStack(String id, { Future<void>? abortTrigger, }) async {
-    final response = await getStackWithHttpInfo(id, abortTrigger: abortTrigger,);
+  ///
+  /// * [String] key:
+  ///
+  /// * [String] slug:
+  Future<StackResponseDto?> getStack(String id, { String? key, String? slug, Future<void>? abortTrigger, }) async {
+    final response = await getStackWithHttpInfo(id, key: key, slug: slug, abortTrigger: abortTrigger,);
     if (response.statusCode >= HttpStatus.badRequest) {
       throw ApiException(response.statusCode, await _decodeBodyBytes(response));
     }
