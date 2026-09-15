@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { goto } from '$app/navigation';
+  import { afterNavigate, goto } from '$app/navigation';
+  import { page } from '$app/state';
   import { shortcuts, type ShortcutOptions } from '$lib/actions/shortcut';
   import type { Action } from '$lib/components/asset-viewer/actions/action';
   import type { AssetCursor } from '$lib/components/asset-viewer/AssetViewer.svelte';
@@ -26,12 +27,13 @@
   import { handleError } from '$lib/utils/handle-error';
   import type { ContextMenuPosition } from '$lib/utils/context-menu';
   import { getJustifiedLayoutFromAssets } from '$lib/utils/layout-utils';
-  import { navigate } from '$lib/utils/navigation';
+  import { isAssetViewerRoute, navigate } from '$lib/utils/navigation';
   import { isTimelineAsset, toTimelineAsset } from '$lib/utils/timeline-util';
   import { TUNABLES } from '$lib/utils/tunables';
   import { AssetVisibility, type AssetResponseDto } from '@immich/sdk';
   import { modalManager } from '@immich/ui';
   import { debounce } from 'lodash-es';
+  import { tick } from 'svelte';
   import { t } from 'svelte-i18n';
 
   const {
@@ -112,6 +114,24 @@
   };
 
   const updateSlidingWindow = () => (scrollTop = document.scrollingElement?.scrollTop ?? 0);
+
+  afterNavigate(({ complete }) => {
+    void complete.then(async () => {
+      const date = page.url.searchParams.get('at');
+      if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date) || isAssetViewerRoute(page)) {
+        return;
+      }
+
+      const index = assets.findIndex((asset) => asset.localDateTime.startsWith(date));
+      if (index === -1) {
+        return;
+      }
+
+      await tick();
+      globalThis.scrollTo({ top: slidingWindowOffset + geometry.getTop(index) });
+      updateSlidingWindow();
+    });
+  });
 
   const debouncedOnEndReached = debounce(() => onEndReached?.(), 750, { maxWait: 100, leading: true });
 

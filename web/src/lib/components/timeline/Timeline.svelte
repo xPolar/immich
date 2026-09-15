@@ -33,7 +33,7 @@
   import { updateStackedAssetInTimeline, updateUnstackedAssetInTimeline } from '$lib/utils/actions';
   import type { ContextMenuPosition } from '$lib/utils/context-menu';
   import { isAssetViewerRoute, navigate } from '$lib/utils/navigation';
-  import { getTimes, type ScrubberListener } from '$lib/utils/timeline-util';
+  import { fromISODateTimeUTCToObject, getTimes, type ScrubberListener } from '$lib/utils/timeline-util';
   import { PersistedLocalStorage } from '$lib/utils/persisted';
   import { type AlbumResponseDto, type PersonResponseDto, type UserResponseDto } from '@immich/sdk';
   import { DateTime } from 'luxon';
@@ -290,12 +290,24 @@
       // the performance benefits of deferred layouts while still supporting deep linking
       // to assets at the end of the timeline.
       timelineManager.isScrollingOnLoad = true;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(assetId)) {
+        const date = DateTime.fromISO(assetId, { zone: 'utc' });
+        const asset = date.isValid
+          ? await timelineManager.getClosestAssetToDate(fromISODateTimeUTCToObject(assetId), {
+              preferSameDay: true,
+            })
+          : undefined;
+        if (!asset) {
+          return;
+        }
+        assetId = asset.id;
+      }
       const timelineMonth = await timelineManager.findTimelineMonthForAsset({ id: assetId });
       if (!timelineMonth) {
-        return false;
+        return;
       }
       scrollToAssetPosition(assetId, timelineMonth);
-      return true;
+      return assetId;
     } finally {
       timelineManager.isScrollingOnLoad = false;
     }
@@ -321,16 +333,13 @@
       }
     }
     const scrollTarget = assetViewerManager.gridScrollTarget?.at;
-    let scrolled = false;
-    if (scrollTarget) {
-      scrolled = await scrollAndLoadAsset(scrollTarget);
-    }
-    if (!scrolled) {
+    const scrolledToAsset = scrollTarget ? await scrollAndLoadAsset(scrollTarget) : undefined;
+    if (scrolledToAsset) {
+      await tick();
+      focusAsset(scrolledToAsset);
+    } else {
       // if the asset is not found, scroll to the top
       timelineManager.scrollTo(0);
-    } else if (scrollTarget) {
-      await tick();
-      focusAsset(scrollTarget);
     }
     invisible = false;
   };

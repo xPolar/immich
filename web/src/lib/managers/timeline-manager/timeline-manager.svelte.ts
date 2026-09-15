@@ -640,7 +640,11 @@ export class TimelineManager extends VirtualScrollManager {
     return await getAssetWithOffset(this, assetDescriptor, interval, 'earlier');
   }
 
-  async getClosestAssetToDate(dateTime: TimelineDateTime) {
+  async getClosestAssetToDate(dateTime: TimelineDateTime, { preferSameDay = false } = {}) {
+    if (!this.isInitialized) {
+      await this.initTask.waitUntilExecution();
+    }
+
     let timelineMonth = findTimelineMonthForDate(this, dateTime);
     if (!timelineMonth) {
       // if exact match not found, find closest
@@ -649,7 +653,17 @@ export class TimelineManager extends VirtualScrollManager {
         return;
       }
     }
-    await this.loadTimelineMonth(dateTime, { cancelable: false });
+    await this.loadTimelineMonth(timelineMonth.yearMonth, { cancelable: false });
+    if (
+      preferSameDay &&
+      timelineMonth.yearMonth.year === dateTime.year &&
+      timelineMonth.yearMonth.month === dateTime.month
+    ) {
+      const asset = timelineMonth.timelineDays.find(({ day }) => day === dateTime.day)?.getFirstAsset();
+      if (asset) {
+        return asset;
+      }
+    }
     const asset = timelineMonth.findClosest(dateTime);
     if (asset) {
       return asset;
