@@ -30,26 +30,26 @@ describe('DetailPanelDate', () => {
   });
 
   it.each([
-    ['/(user)/photos/[[assetId=id]]', '/photos/asset-id', '/photos?at=2024-06-15'],
+    ['/(user)/photos/[[assetId=id]]', '/photos/asset-id', '/photos?at=asset-id'],
     [
       '/(user)/albums/[albumId=id]/[[photos=photos]]/[[assetId=id]]',
       '/albums/album-id/photos/asset-id',
-      '/albums/album-id?at=2024-06-15',
+      '/albums/album-id?at=asset-id',
     ],
     [
       '/(user)/people/[personId]/[[photos=photos]]/[[assetId=id]]',
       '/people/person-id/photos/asset-id',
-      '/people/person-id?at=2024-06-15',
+      '/people/person-id?at=asset-id',
     ],
     [
       '/(user)/search/[[photos=photos]]/[[assetId=id]]',
       '/search/photos/asset-id?query=beach&libraryId=library-id',
-      '/search?query=beach&libraryId=library-id&at=2024-06-15',
+      '/search?query=beach&libraryId=library-id&at=asset-id',
     ],
     [
       '/(user)/share/[key]/[[photos=photos]]/[[assetId=id]]',
       '/share/shared-key/photos/asset-id',
-      '/share/shared-key?at=2024-06-15',
+      '/share/shared-key?at=asset-id',
     ],
   ])('keeps a normal click in %s', async (routeId, pathname, expected) => {
     Object.assign(page, { url: new URL(pathname, 'http://localhost'), route: { id: routeId } });
@@ -57,7 +57,7 @@ describe('DetailPanelDate', () => {
 
     await fireEvent.click(screen.getByTestId('detail-panel-view-date-button'));
 
-    expect(goto).toHaveBeenCalledWith(expected, undefined);
+    expect(goto).toHaveBeenCalledWith(`${expected}&atTime=2024-06-15T12%3A30%3A00.000`, undefined);
     expect(modalManager.show).not.toHaveBeenCalled();
   });
 
@@ -67,18 +67,18 @@ describe('DetailPanelDate', () => {
 
     await fireEvent.click(screen.getByTestId('detail-panel-view-date-button'), { shiftKey: true });
 
-    expect(goto).toHaveBeenCalledWith('/photos?at=2024-06-15');
+    expect(goto).toHaveBeenCalledWith('/photos?at=asset-id&atTime=2024-06-15T12%3A30%3A00.000');
     expect(modalManager.show).not.toHaveBeenCalled();
   });
 
-  it('targets the displayed date rather than the primary asset when viewing a stack member', async () => {
+  it('targets the primary asset in the home gallery and retains the displayed timestamp as a fallback', async () => {
     render(DetailPanelDate, {
       asset: { ...asset, stack: { id: 'stack-id', primaryAssetId: 'primary-id', assetCount: 2 } },
     });
 
     await fireEvent.click(screen.getByTestId('detail-panel-view-date-button'), { shiftKey: true });
 
-    expect(goto).toHaveBeenCalledWith('/photos?at=2024-06-15');
+    expect(goto).toHaveBeenCalledWith('/photos?at=primary-id&atTime=2024-06-15T12%3A30%3A00.000');
   });
 
   it('uses the displayed local date instead of the UTC day', async () => {
@@ -91,7 +91,7 @@ describe('DetailPanelDate', () => {
 
     await fireEvent.click(screen.getByTestId('detail-panel-view-date-button'), { shiftKey: true });
 
-    expect(goto).toHaveBeenCalledWith('/photos?at=2024-06-15');
+    expect(goto).toHaveBeenCalledWith('/photos?at=asset-id&atTime=2024-06-15T22%3A30%3A00.000');
   });
 
   it('keeps date editing on the separate pencil button', async () => {
@@ -111,6 +111,6 @@ describe('DetailPanelDate', () => {
 
     expect(screen.queryByRole('button', { name: 'edit_date' })).not.toBeInTheDocument();
     await fireEvent.click(screen.getByTestId('detail-panel-view-date-button'), { shiftKey: true });
-    expect(goto).toHaveBeenCalledWith('/photos?at=2024-06-15');
+    expect(goto).toHaveBeenCalledWith('/photos?at=asset-id&atTime=2024-06-15T12%3A30%3A00.000');
   });
 });

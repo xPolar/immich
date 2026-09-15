@@ -6,6 +6,7 @@ import { Route } from '$lib/route';
 
 export type AssetGridRouteSearchParams = {
   at: string | null | undefined;
+  atTime?: string | null;
 };
 export const isExternalUrl = (url: string): boolean => {
   return new URL(url, globalThis.location.href).origin !== globalThis.location.origin;
@@ -44,6 +45,7 @@ export function currentUrlReplaceAssetId(assetId: string) {
   const params = new URLSearchParams(page.url.search);
   // always remove the assetGridScrollTargetParams
   params.delete('at');
+  params.delete('atTime');
   const paramsString = params.toString();
   const searchparams = paramsString == '' ? '' : '?' + params.toString();
   // this contains special casing for the /photos/:assetId photos route, which hangs directly
@@ -56,7 +58,7 @@ export function currentUrlReplaceAssetId(assetId: string) {
 function replaceScrollTarget(url: string, searchParams?: AssetGridRouteSearchParams | null) {
   const parsed = new URL(url, page.url);
 
-  const { at: assetId } = searchParams || { at: null };
+  const { at: assetId, atTime } = searchParams || { at: null };
 
   if (!assetId) {
     return parsed.pathname;
@@ -65,6 +67,11 @@ function replaceScrollTarget(url: string, searchParams?: AssetGridRouteSearchPar
   const params = new URLSearchParams(page.url.search);
   if (assetId) {
     params.set('at', assetId);
+  }
+  if (atTime) {
+    params.set('atTime', atTime);
+  } else {
+    params.delete('atTime');
   }
   return parsed.pathname + '?' + params.toString();
 }

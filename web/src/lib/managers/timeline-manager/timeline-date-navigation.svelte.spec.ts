@@ -41,6 +41,30 @@ describe('timeline date navigation', () => {
     expect(asset?.id).toBe(assets[2].id);
   });
 
+  it('uses hours and minutes to find the nearest photo rather than the first photo of the day', async () => {
+    await timelineManager.updateViewport({ width: 1588, height: 1000 });
+
+    const asset = await timelineManager.getClosestAssetToDate(fromISODateTimeUTCToObject('2024-06-15T12:01:00'));
+
+    expect(asset?.id).toBe(assets[1].id);
+  });
+
+  it('retains seconds and milliseconds when choosing between nearby photos', async () => {
+    const closeAssets = ['2024-06-15T12:30:02.900Z', '2024-06-15T12:30:02.100Z', '2024-06-15T12:30:01.900Z'].map(
+      (date) =>
+        timelineAssetFactory.build({
+          localDateTime: fromISODateTimeUTCToObject(date),
+          fileCreatedAt: fromISODateTimeUTCToObject(date),
+        }),
+    );
+    sdkMock.getTimeBucket.mockResolvedValue(toResponseDto(...closeAssets));
+    await timelineManager.updateViewport({ width: 1588, height: 1000 });
+
+    const asset = await timelineManager.getClosestAssetToDate(fromISODateTimeUTCToObject('2024-06-15T12:30:02.110'));
+
+    expect(asset?.id).toBe(closeAssets[1].id);
+  });
+
   it('falls back to available photos when the requested date is absent', async () => {
     await timelineManager.updateViewport({ width: 1588, height: 1000 });
 
