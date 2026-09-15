@@ -6,6 +6,7 @@
   import type { AssetCursor } from '$lib/components/asset-viewer/AssetViewer.svelte';
   import AssetContextMenu from '$lib/components/assets/AssetContextMenu.svelte';
   import Thumbnail from '$lib/components/assets/thumbnail/Thumbnail.svelte';
+  import { focusAsset } from '$lib/components/timeline/actions/focus-actions';
   import { AssetAction } from '$lib/constants';
   import Portal from '$lib/elements/Portal.svelte';
   import {
@@ -28,7 +29,7 @@
   import type { ContextMenuPosition } from '$lib/utils/context-menu';
   import { getJustifiedLayoutFromAssets } from '$lib/utils/layout-utils';
   import { isAssetViewerRoute, navigate } from '$lib/utils/navigation';
-  import { isTimelineAsset, toTimelineAsset } from '$lib/utils/timeline-util';
+  import { fromISODateTimeUTC, isTimelineAsset, toTimelineAsset } from '$lib/utils/timeline-util';
   import { TUNABLES } from '$lib/utils/tunables';
   import { AssetVisibility, type AssetResponseDto } from '@immich/sdk';
   import { modalManager } from '@immich/ui';
@@ -117,12 +118,26 @@
 
   afterNavigate(({ complete }) => {
     void complete.then(async () => {
-      const date = page.url.searchParams.get('at');
-      if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date) || isAssetViewerRoute(page)) {
+      const target = page.url.searchParams.get('at');
+      if (!target || isAssetViewerRoute(page)) {
         return;
       }
 
-      const index = assets.findIndex((asset) => asset.localDateTime.startsWith(date));
+      let index = assets.findIndex((asset) => asset.id === target);
+      const timestamp = page.url.searchParams.get('atTime');
+      if (index === -1 && timestamp) {
+        const time = fromISODateTimeUTC(timestamp).toMillis();
+        let closest = Infinity;
+        for (const [candidate, asset] of assets.entries()) {
+          const distance = Math.abs(fromISODateTimeUTC(asset.localDateTime).toMillis() - time);
+          if (distance < closest) {
+            closest = distance;
+            index = candidate;
+          }
+        }
+      } else if (index === -1 && /^\d{4}-\d{2}-\d{2}$/.test(target)) {
+        index = assets.findIndex((asset) => asset.localDateTime.startsWith(target));
+      }
       if (index === -1) {
         return;
       }
@@ -130,6 +145,8 @@
       await tick();
       globalThis.scrollTo({ top: slidingWindowOffset + geometry.getTop(index) });
       updateSlidingWindow();
+      await tick();
+      focusAsset(assets[index].id);
     });
   });
 

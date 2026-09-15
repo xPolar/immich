@@ -280,7 +280,7 @@
     timelineManager.scrollTo(scrollTarget);
   };
 
-  const scrollAndLoadAsset = async (assetId: string) => {
+  const scrollAndLoadAsset = async (assetId: string, atTime?: string | null) => {
     try {
       // This flag prevents layout deferral to fix scroll positioning issues.
       // When layouts are deferred and we scroll to an asset at the end of the timeline,
@@ -290,19 +290,22 @@
       // the performance benefits of deferred layouts while still supporting deep linking
       // to assets at the end of the timeline.
       timelineManager.isScrollingOnLoad = true;
-      if (/^\d{4}-\d{2}-\d{2}$/.test(assetId)) {
-        const date = DateTime.fromISO(assetId, { zone: 'utc' });
+      const isDate = /^\d{4}-\d{2}-\d{2}$/.test(assetId);
+      let timelineMonth = isDate ? undefined : await timelineManager.findTimelineMonthForAsset({ id: assetId });
+      const timestamp = atTime ?? (isDate ? assetId : undefined);
+      if (!timelineMonth && timestamp) {
+        const date = DateTime.fromISO(timestamp, { zone: 'utc' });
         const asset = date.isValid
-          ? await timelineManager.getClosestAssetToDate(fromISODateTimeUTCToObject(assetId), {
-              preferSameDay: true,
+          ? await timelineManager.getClosestAssetToDate(fromISODateTimeUTCToObject(timestamp), {
+              preferSameDay: isDate && !atTime,
             })
           : undefined;
         if (!asset) {
           return;
         }
         assetId = asset.id;
+        timelineMonth = await timelineManager.findTimelineMonthForAsset({ id: assetId });
       }
-      const timelineMonth = await timelineManager.findTimelineMonthForAsset({ id: assetId });
       if (!timelineMonth) {
         return;
       }
@@ -333,7 +336,9 @@
       }
     }
     const scrollTarget = assetViewerManager.gridScrollTarget?.at;
-    const scrolledToAsset = scrollTarget ? await scrollAndLoadAsset(scrollTarget) : undefined;
+    const scrolledToAsset = scrollTarget
+      ? await scrollAndLoadAsset(scrollTarget, assetViewerManager.gridScrollTarget?.atTime)
+      : undefined;
     if (scrolledToAsset) {
       await tick();
       focusAsset(scrolledToAsset);
@@ -682,7 +687,7 @@
     onAfterUpdate={() => {
       const asset = page.url.searchParams.get('at');
       if (asset) {
-        assetViewerManager.gridScrollTarget = { at: asset };
+        assetViewerManager.gridScrollTarget = { at: asset, atTime: page.url.searchParams.get('atTime') };
       }
       void scrollAfterNavigate();
     }}

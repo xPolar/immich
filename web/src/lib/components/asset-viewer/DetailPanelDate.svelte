@@ -26,17 +26,21 @@
   const isOwner = $derived(authManager.authenticated && asset.ownerId === authManager.user.id);
 
   const handleViewDate = async (event: MouseEvent) => {
-    const at = dateTime.toISODate();
-    if (!at) {
+    const atTime = dateTime.toISO({ includeOffset: false });
+    if (!atTime) {
       return;
     }
 
     if (event.shiftKey) {
-      await goto(Route.photos({ at }));
+      await goto(Route.photos({ at: asset.stack?.primaryAssetId ?? asset.id, atTime }));
       return;
     }
 
-    await navigate({ targetRoute: 'current', assetId: null, assetGridRouteSearchParams: { at } });
+    await navigate({
+      targetRoute: 'current',
+      assetId: null,
+      assetGridRouteSearchParams: { at: asset.id, atTime },
+    });
   };
 
   const handleChangeDate = async () => {

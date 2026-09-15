@@ -18,7 +18,7 @@
       assetViewerManager.showAssetViewer(false);
     }
     const asset = page.url.searchParams.get('at');
-    assetViewerManager.gridScrollTarget = { at: asset };
+    assetViewerManager.gridScrollTarget = { at: asset, atTime: page.url.searchParams.get('atTime') };
   });
 </script>
 
