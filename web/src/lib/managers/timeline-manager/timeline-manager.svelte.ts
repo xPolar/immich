@@ -77,7 +77,7 @@ export class TimelineManager extends VirtualScrollManager {
   initTask = new CancellableTask(
     () => {
       this.isInitialized = true;
-      if (this.#options.albumId || this.#options.personId) {
+      if (this.#options.albumId || this.#options.personId || this.#options.externalAssets) {
         return;
       }
       this.connect();
@@ -299,6 +299,10 @@ export class TimelineManager extends VirtualScrollManager {
   }
 
   async #initializeTimelineMonths() {
+    if (this.#options.externalAssets) {
+      return;
+    }
+
     const timebuckets = await getTimeBuckets({
       ...authManager.params,
       ...this.#options,
@@ -531,6 +535,9 @@ export class TimelineManager extends VirtualScrollManager {
 
     if (!month) {
       month = new TimelineMonth(this, dateTime, 1, true, this.#options.order, this.#options.orderBy);
+      if (this.#options.externalAssets) {
+        void month.loader?.execute(() => Promise.resolve(), false);
+      }
       this.months.push(month);
     }
     return month;
@@ -555,6 +562,9 @@ export class TimelineManager extends VirtualScrollManager {
       this.postCreateSegments();
     }
     this.postUpsert(context);
+    if (this.#options.externalAssets) {
+      this.#createScrubberMonths();
+    }
   }
 
   #updateAssets(assets: TimelineAsset[]) {
