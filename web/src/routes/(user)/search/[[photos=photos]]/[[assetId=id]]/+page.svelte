@@ -34,7 +34,7 @@
   import { toTimelineAsset } from '$lib/utils/timeline-util';
   import { getTypedSearchDisplayText } from '$lib/utils/typed-search/typed-search-display-cache';
   import {
-    type AlbumResponseDto,
+    type AssetResponseDto,
     getPerson,
     getTagById,
     type MetadataSearchDto,
@@ -44,11 +44,14 @@
   } from '@immich/sdk';
   import { ActionButton, CommandPaletteDefaultProvider, Icon, LoadingSpinner } from '@immich/ui';
   import { mdiArrowLeft, mdiClose, mdiDotsVertical, mdiImageOffOutline } from '@mdi/js';
+  import { range } from 'lodash-es';
   import { untrack } from 'svelte';
   import { t } from 'svelte-i18n';
 
-  const SMART_SEARCH_PRELOAD_LIMIT = 500;
-  const METADATA_SEARCH_PRELOAD_LIMIT = 10_000;
+  const SMART_SEARCH_PAGE_SIZE = 500;
+  const METADATA_SEARCH_PAGE_SIZE = 1000;
+  const METADATA_SEARCH_PRELOAD_PAGES = 10;
+  const PRELOAD_CONCURRENCY = 4;
   const timelineOptions = { externalAssets: true };
 
   // Viewing an asset pushes its own history state, which causes weird
@@ -57,8 +60,7 @@
   let previousRoute = $state<string>(Route.explore());
 
   let timelineManager = $state<TimelineManager>() as TimelineManager;
-  let nextPage = $state(1);
-  let searchResultAlbums: AlbumResponseDto[] = $state([]);
+  let nextPage = $state(0);
   let isLoading = $state(true);
   let searchGeneration = 0;
 
@@ -71,7 +73,8 @@
   );
   let searchTermKeys = $derived(getObjectKeys(terms));
   let isSmartSearch = $derived(('query' in terms || 'queryAssetId' in terms) && smartSearchEnabled);
-  let preloadLimit = $derived(isSmartSearch ? SMART_SEARCH_PRELOAD_LIMIT : METADATA_SEARCH_PRELOAD_LIMIT);
+  let pageSize = $derived(isSmartSearch ? SMART_SEARCH_PAGE_SIZE : METADATA_SEARCH_PAGE_SIZE);
+  let preloadPages = $derived(isSmartSearch ? 1 : METADATA_SEARCH_PRELOAD_PAGES);
   let isNearTimelineEnd = $derived(
     timelineManager.viewportHeight > 0 &&
       timelineManager.visibleWindow.bottom + timelineManager.viewportHeight >= timelineManager.totalViewerHeight,
@@ -85,11 +88,8 @@
   });
 
   $effect(() => {
-    if (isLoading || !nextPage) {
-      return;
-    }
-    if (timelineManager.assetCount < preloadLimit || isNearTimelineEnd) {
-      untrack(() => handlePromiseError(loadNextPage()));
+    if (!isLoading && nextPage && isNearTimelineEnd) {
+      untrack(() => handlePromiseError(loadSearchPages(nextPage, 1)));
     }
   });
 
@@ -116,43 +116,45 @@
 
   async function onSearchQueryUpdate() {
     searchGeneration++;
-    nextPage = 1;
-    searchResultAlbums = [];
-    await loadNextPage(true);
+    nextPage = 0;
+    await loadSearchPages(1, preloadPages);
   }
 
-  // eslint-disable-next-line svelte/valid-prop-names-in-kit-pages
-  export const loadNextPage = async (force?: boolean) => {
-    if (!nextPage || (isLoading && !force)) {
-      return;
-    }
-    isLoading = true;
-    const generation = searchGeneration;
+  function fetchSearchPage(page: number) {
+    const searchDto: SearchTerms = { page, size: pageSize, withExif: true, ...terms };
+    return isSmartSearch
+      ? searchSmart({ smartSearchDto: { ...searchDto, language: $lang } })
+      : searchAssets({ metadataSearchDto: searchDto });
+  }
 
-    const searchDto: SearchTerms = {
-      page: nextPage,
-      withExif: true,
-      ...terms,
-    };
+  async function loadSearchPages(firstPage: number, pageCount: number) {
+    const generation = searchGeneration;
+    const endPage = firstPage + pageCount;
+    isLoading = true;
 
     try {
-      const { albums, assets } =
-        ('query' in searchDto || 'queryAssetId' in searchDto) && smartSearchEnabled
-          ? await searchSmart({ smartSearchDto: { ...searchDto, language: $lang } })
-          : await searchAssets({ metadataSearchDto: searchDto });
+      const assets: AssetResponseDto[] = [];
+      let page = firstPage;
+      let hasNextPage = true;
+      while (hasNextPage && page < endPage) {
+        const pages = range(page, Math.min(page + PRELOAD_CONCURRENCY, endPage));
+        const responses = await Promise.all(pages.map((page) => fetchSearchPage(page)));
+        for (const response of responses) {
+          assets.push(...response.assets.items);
+        }
+        hasNextPage = !!responses.at(-1)?.assets.nextPage;
+        page += pages.length;
+      }
 
       await timelineManager.initTask.waitUntilExecution();
       if (generation !== searchGeneration) {
         return;
       }
 
-      searchResultAlbums.push(...albums.items);
-      timelineManager.upsertAssets(assets.items.map((asset) => toTimelineAsset(asset)));
-
-      nextPage = Number(assets.nextPage) || 0;
+      timelineManager.upsertAssets(assets.map((asset) => toTimelineAsset(asset)));
+      nextPage = hasNextPage ? page : 0;
     } catch (error) {
       if (generation === searchGeneration) {
-        nextPage = 0;
         handleError(error, $t('loading_search_results_failed'));
       }
     } finally {
@@ -160,7 +162,7 @@
         isLoading = false;
       }
     }
-  };
+  }
 
   function getHumanReadableDate(dateString: string) {
     const date = parseUtcDate(dateString).startOf('day');

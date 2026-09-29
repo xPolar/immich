@@ -877,6 +877,21 @@ describe('TimelineManager', () => {
       ]);
     });
 
+    it('lays out months outside the viewport so heights are accurate', () => {
+      const assets = Array.from({ length: 24 }, (_, index) =>
+        deriveLocalDateTimeFromFileCreatedAt(
+          timelineAssetFactory.build({
+            fileCreatedAt: fromISODateTimeUTCToObject(`${2000 + index}-06-15T12:00:00.000Z`),
+          }),
+        ),
+      );
+      timelineManager.upsertAssets(assets);
+
+      const lastMonth = timelineManager.months.at(-1)!;
+      expect(lastMonth.isInOrNearViewport).toBe(false);
+      expect(lastMonth.timelineDays.every(({ height }) => height > 0)).toBe(true);
+    });
+
     it('keeps provided assets when a month is cancelled or reloaded', async () => {
       timelineManager.upsertAssets([januaryAsset]);
       const month = timelineManager.months[0];

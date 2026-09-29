@@ -3,7 +3,8 @@ import type { TimelineMonth } from '../timeline-month.svelte';
 import type { UpdateGeometryOptions } from '../types';
 
 export function updateGeometry(timelineManager: TimelineManager, month: TimelineMonth, options: UpdateGeometryOptions) {
-  const { invalidateHeight, noDefer = false } = options;
+  const { invalidateHeight } = options;
+  const noDefer = options.noDefer || timelineManager.hasExternalAssets;
   if (invalidateHeight) {
     month.isHeightActual = false;
   }

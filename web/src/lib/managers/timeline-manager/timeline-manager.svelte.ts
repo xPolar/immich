@@ -99,6 +99,10 @@ export class TimelineManager extends VirtualScrollManager {
   #timelineDaysCollapsedByDefault = false;
   #unsubscribes: Array<() => void> = [];
 
+  get hasExternalAssets() {
+    return !!this.#options.externalAssets;
+  }
+
   get showAssetOwners() {
     return this.#showAssetOwners.current;
   }
