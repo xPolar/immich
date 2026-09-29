@@ -1,5 +1,5 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, Query } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Get, Header, HttpCode, HttpStatus, Post, Query } from '@nestjs/common';
+import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { Endpoint, HistoryBuilder } from 'src/decorators';
 import { AssetResponseDto } from 'src/dtos/asset-response.dto';
 import { AuthDto } from 'src/dtos/auth.dto';
@@ -16,9 +16,12 @@ import {
   SearchResponseDto,
   SearchStatisticsResponseDto,
   SearchSuggestionRequestDto,
+  SearchTimeBucketDto,
+  SearchTimeBucketsDto,
   SmartSearchDto,
   StatisticsSearchDto,
 } from 'src/dtos/search.dto';
+import { TimeBucketAssetResponseDto, TimeBucketsResponseDto } from 'src/dtos/time-bucket.dto';
 import { ApiTag, Permission } from 'src/enum';
 import { Auth, Authenticated } from 'src/middleware/auth.guard';
 import { SearchService } from 'src/services/search.service';
@@ -38,6 +41,32 @@ export class SearchController {
   })
   searchAssets(@Auth() auth: AuthDto, @Body() dto: MetadataSearchDto): Promise<SearchResponseDto> {
     return this.service.searchMetadata(auth, dto);
+  }
+
+  @Post('metadata/buckets')
+  @Authenticated({ permission: Permission.AssetRead })
+  @HttpCode(HttpStatus.OK)
+  @Endpoint({
+    summary: 'Get search time buckets',
+    description: 'Retrieve the time buckets and asset counts for assets matching the metadata search criteria.',
+    history: new HistoryBuilder().added('v3.0.0'),
+  })
+  searchTimeBuckets(@Auth() auth: AuthDto, @Body() dto: SearchTimeBucketsDto): Promise<TimeBucketsResponseDto[]> {
+    return this.service.searchTimeBuckets(auth, dto);
+  }
+
+  @Post('metadata/bucket')
+  @Authenticated({ permission: Permission.AssetRead })
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({ type: TimeBucketAssetResponseDto })
+  @Header('Content-Type', 'application/json')
+  @Endpoint({
+    summary: 'Get search time bucket',
+    description: 'Retrieve the assets in a time bucket that match the metadata search criteria.',
+    history: new HistoryBuilder().added('v3.0.0'),
+  })
+  searchTimeBucket(@Auth() auth: AuthDto, @Body() dto: SearchTimeBucketDto) {
+    return this.service.searchTimeBucket(auth, dto);
   }
 
   @Post('statistics')

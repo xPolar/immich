@@ -305,6 +305,14 @@ export function truncatedDate<O>(order: AssetOrderBy = AssetOrderBy.TakenAt, siz
   return sql<O>`date_trunc(${sql.lit(size ?? 'MONTH')}, ${sql.ref(order === AssetOrderBy.CreatedAt ? 'asset.createdAt' : 'localDateTime')} AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'`;
 }
 
+export function withSearchFilter<O>(
+  kysely: Kysely<DB>,
+  qb: SelectQueryBuilder<DB, 'asset', O>,
+  options: AssetSearchBuilderOptions,
+) {
+  return qb.where('asset.id', 'in', searchAssetBuilder(kysely, options).clearSelect().select('asset.id'));
+}
+
 export function withTagId<O>(qb: SelectQueryBuilder<DB, 'asset', O>, tagId: string) {
   return qb.where((eb) =>
     eb.exists(

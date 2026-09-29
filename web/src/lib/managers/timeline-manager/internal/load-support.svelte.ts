@@ -1,4 +1,4 @@
-import { getTimeBucket } from '@immich/sdk';
+import { getTimeBucket, searchTimeBucket } from '@immich/sdk';
 import { authManager } from '$lib/managers/auth-manager.svelte';
 import { toISOYearMonthUTC } from '$lib/utils/timeline-util';
 import { TimelineManager } from '../timeline-manager.svelte';
@@ -16,14 +16,9 @@ export async function loadFromTimeBuckets(
   }
 
   const timeBucket = toISOYearMonthUTC(timelineMonth.yearMonth);
-  const bucketResponse = await getTimeBucket(
-    {
-      ...authManager.params,
-      ...options,
-      timeBucket,
-    },
-    { signal },
-  );
+  const bucketResponse = options.search
+    ? await searchTimeBucket({ searchTimeBucketDto: { ...options.search, timeBucket } }, { signal })
+    : await getTimeBucket({ ...authManager.params, ...options, timeBucket }, { signal });
 
   if (!bucketResponse || signal.aborted) {
     return;

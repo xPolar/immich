@@ -1,4 +1,11 @@
-import { AssetOrder, getAssetInfo, getTimeBuckets, AssetOrderBy, type AssetResponseDto } from '@immich/sdk';
+import {
+  AssetOrder,
+  getAssetInfo,
+  getTimeBuckets,
+  AssetOrderBy,
+  searchTimeBuckets,
+  type AssetResponseDto,
+} from '@immich/sdk';
 import { clamp, isEqual } from 'lodash-es';
 import { SvelteDate, SvelteMap, SvelteSet } from 'svelte/reactivity';
 import { VirtualScrollManager } from '$lib/managers/VirtualScrollManager/VirtualScrollManager.svelte';
@@ -77,7 +84,7 @@ export class TimelineManager extends VirtualScrollManager {
   initTask = new CancellableTask(
     () => {
       this.isInitialized = true;
-      if (this.#options.albumId || this.#options.personId || this.#options.externalAssets) {
+      if (this.#options.albumId || this.#options.personId || this.#options.externalAssets || this.#options.search) {
         return;
       }
       this.connect();
@@ -307,10 +314,9 @@ export class TimelineManager extends VirtualScrollManager {
       return;
     }
 
-    const timebuckets = await getTimeBuckets({
-      ...authManager.params,
-      ...this.#options,
-    });
+    const timebuckets = this.#options.search
+      ? await searchTimeBuckets({ searchTimeBucketsDto: this.#options.search })
+      : await getTimeBuckets({ ...authManager.params, ...this.#options });
 
     this.months = timebuckets.map((timeBucket) => {
       const date = new SvelteDate(timeBucket.timeBucket);

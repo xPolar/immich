@@ -124,6 +124,54 @@ describe(SearchService.name, () => {
     });
   });
 
+  describe('metadata search time buckets', () => {
+    it('should bucket only matching assets from searchable owners and return them per bucket', async () => {
+      const { sut, ctx } = setup();
+      const { user } = await ctx.newUser();
+      const { user: partner } = await ctx.newUser();
+      const { user: other } = await ctx.newUser();
+      await ctx.newPartner({ sharedById: partner.id, sharedWithId: user.id });
+      const libraries = new LibraryRepository(defaultDatabase);
+      const library = await libraries.create({
+        ownerId: user.id,
+        name: 'Photos',
+        importPaths: [],
+        exclusionPatterns: [],
+      });
+
+      const createAsset = async (ownerId: string, date: string, city: string, libraryId?: string) => {
+        const { asset } = await ctx.newAsset({ ownerId, libraryId, localDateTime: date, fileCreatedAt: date });
+        await ctx.newExif({ assetId: asset.id, city });
+        return asset;
+      };
+      const januaryParis = await createAsset(user.id, '2024-01-15T10:00:00.000Z', 'Paris', library.id);
+      const januaryParisUpload = await createAsset(user.id, '2024-01-20T10:00:00.000Z', 'Paris');
+      const marchParis = await createAsset(partner.id, '2024-03-02T10:00:00.000Z', 'Paris');
+      await createAsset(user.id, '2024-03-05T10:00:00.000Z', 'Berlin', library.id);
+      await createAsset(other.id, '2024-01-10T10:00:00.000Z', 'Paris');
+
+      const auth = factory.auth({ user: { id: user.id } });
+
+      await expect(sut.searchTimeBuckets(auth, { city: 'Paris' })).resolves.toEqual([
+        { timeBucket: '2024-03-01', count: 1 },
+        { timeBucket: '2024-01-01', count: 2 },
+      ]);
+      await expect(sut.searchTimeBuckets(auth, { libraryId: library.id })).resolves.toEqual([
+        { timeBucket: '2024-03-01', count: 1 },
+        { timeBucket: '2024-01-01', count: 1 },
+      ]);
+
+      const january = JSON.parse(await sut.searchTimeBucket(auth, { city: 'Paris', timeBucket: '2024-01-01' }));
+      expect(january.id).toEqual([januaryParisUpload.id, januaryParis.id]);
+      expect(january.city).toEqual(['Paris', 'Paris']);
+
+      const march = JSON.parse(
+        await sut.searchTimeBucket(auth, { city: 'Paris', timeBucket: '2024-03-01T00:00:00.000Z' }),
+      );
+      expect(march.id).toEqual([marchParis.id]);
+    });
+  });
+
   it('should work', () => {
     const { sut } = setup();
     expect(sut).toBeDefined();

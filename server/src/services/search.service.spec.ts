@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { mapAsset } from 'src/dtos/asset-response.dto';
 import { SearchSuggestionType } from 'src/dtos/search.dto';
+import { AssetOrder, AssetVisibility } from 'src/enum';
 import { SearchService } from 'src/services/search.service';
 import { AssetFactory } from 'test/factories/asset.factory';
 import { AuthFactory } from 'test/factories/auth.factory';
@@ -244,6 +245,58 @@ describe(SearchService.name, () => {
         sut.getSearchSuggestions(authStub.user1, { includeNull: true, type: SearchSuggestionType.CAMERA_LENS_MODEL }),
       ).resolves.toEqual(['10-24mm', null]);
       expect(mocks.search.getCameraLensModels).toHaveBeenCalledWith([authStub.user1.user.id], expect.anything());
+    });
+  });
+
+  describe('searchTimeBuckets', () => {
+    it('should scope buckets to the search filters and searchable owners', async () => {
+      const auth = AuthFactory.create();
+      const libraryId = newUuid();
+      const buckets = [{ timeBucket: '2024-01-01', count: 3 }];
+      mocks.asset.getTimeBuckets.mockResolvedValue(buckets);
+
+      await expect(
+        sut.searchTimeBuckets(auth, { libraryId, visibility: AssetVisibility.Archive, order: AssetOrder.Asc }),
+      ).resolves.toEqual(buckets);
+
+      expect(mocks.asset.getTimeBuckets).toHaveBeenCalledWith({
+        search: {
+          libraryId,
+          visibility: AssetVisibility.Archive,
+          order: AssetOrder.Asc,
+          checksum: undefined,
+          userIds: [auth.user.id],
+        },
+        visibility: AssetVisibility.Archive,
+        order: AssetOrder.Asc,
+      });
+    });
+
+    it('should require an elevated session for locked assets', async () => {
+      await expect(sut.searchTimeBuckets(authStub.user1, { visibility: AssetVisibility.Locked })).rejects.toThrow(
+        'Elevated permission is required',
+      );
+      expect(mocks.asset.getTimeBuckets).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('searchTimeBucket', () => {
+    it('should return the assets for one bucket of the search results', async () => {
+      const auth = AuthFactory.create();
+      const assets = JSON.stringify({ id: [newUuid()] });
+      mocks.asset.getTimeBucket.mockResolvedValue({ assets });
+
+      await expect(sut.searchTimeBucket(auth, { timeBucket: '2024-01-01', city: 'Paris' })).resolves.toBe(assets);
+
+      expect(mocks.asset.getTimeBucket).toHaveBeenCalledWith(
+        '2024-01-01',
+        {
+          search: { city: 'Paris', checksum: undefined, userIds: [auth.user.id] },
+          visibility: undefined,
+          order: undefined,
+        },
+        auth,
+      );
     });
   });
 

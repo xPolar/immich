@@ -85,6 +85,67 @@ describe(SearchController.name, () => {
     });
   });
 
+  describe('POST /search/metadata/buckets', () => {
+    it('should pass search filters to the service without pagination or response options', async () => {
+      const auth = AuthFactory.create();
+      const libraryId = newUuid();
+      const buckets = [{ timeBucket: '2024-01-01', count: 2 }];
+      ctx.authenticate.mockResolvedValue(auth);
+      service.searchTimeBuckets.mockResolvedValue(buckets);
+
+      const { status, body } = await request(ctx.getHttpServer())
+        .post('/search/metadata/buckets')
+        .send({ libraryId, page: 2, size: 10, withExif: true });
+
+      expect(status).toBe(200);
+      expect(body).toEqual(buckets);
+      expect(service.searchTimeBuckets).toHaveBeenCalledWith(auth, { libraryId, order: AssetOrder.Desc });
+      expect(ctx.authenticate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: {
+            adminRoute: false,
+            sharedLinkRoute: false,
+            permission: Permission.AssetRead,
+            uri: '/search/metadata/buckets',
+          },
+        }),
+      );
+    });
+
+    it('should reject an invalid library ID', async () => {
+      const { status } = await request(ctx.getHttpServer())
+        .post('/search/metadata/buckets')
+        .send({ libraryId: 'invalid' });
+      expect(status).toBe(400);
+    });
+  });
+
+  describe('POST /search/metadata/bucket', () => {
+    it('should return the pre-serialized time bucket', async () => {
+      const auth = AuthFactory.create();
+      const assets = JSON.stringify({ id: [newUuid()] });
+      ctx.authenticate.mockResolvedValue(auth);
+      service.searchTimeBucket.mockResolvedValue(assets);
+
+      const { status, body } = await request(ctx.getHttpServer())
+        .post('/search/metadata/bucket')
+        .send({ timeBucket: '2024-01-01', city: 'Paris' });
+
+      expect(status).toBe(200);
+      expect(body).toEqual(JSON.parse(assets));
+      expect(service.searchTimeBucket).toHaveBeenCalledWith(auth, {
+        timeBucket: '2024-01-01',
+        city: 'Paris',
+        order: AssetOrder.Desc,
+      });
+    });
+
+    it('should require a time bucket', async () => {
+      const { status } = await request(ctx.getHttpServer()).post('/search/metadata/bucket').send({});
+      expect(status).toBe(400);
+    });
+  });
+
   describe('POST /search/metadata', () => {
     it('should be an authenticated route', async () => {
       await request(ctx.getHttpServer()).post('/search/metadata');

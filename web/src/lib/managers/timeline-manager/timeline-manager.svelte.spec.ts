@@ -842,6 +842,30 @@ describe('TimelineManager', () => {
     });
   });
 
+  describe('search', () => {
+    it('loads buckets and months from the search endpoints', async () => {
+      const asset = deriveLocalDateTimeFromFileCreatedAt(
+        timelineAssetFactory.build({ fileCreatedAt: fromISODateTimeUTCToObject('2024-01-20T12:00:00.000Z') }),
+      );
+      sdkMock.searchTimeBuckets.mockResolvedValue([{ count: 1, timeBucket: '2024-01-01' }]);
+      sdkMock.searchTimeBucket.mockResolvedValue(toResponseDto(asset));
+      const timelineManager = new TimelineManager();
+
+      await timelineManager.updateOptions({ search: { city: 'Paris' } });
+      await timelineManager.updateViewport({ width: 1588, height: 1000 });
+      await timelineManager.loadTimelineMonth({ year: 2024, month: 1 });
+
+      expect(sdkMock.getTimeBuckets).not.toHaveBeenCalled();
+      expect(sdkMock.getTimeBucket).not.toHaveBeenCalled();
+      expect(sdkMock.searchTimeBuckets).toHaveBeenCalledWith({ searchTimeBucketsDto: { city: 'Paris' } });
+      expect(sdkMock.searchTimeBucket).toHaveBeenCalledWith(
+        { searchTimeBucketDto: { city: 'Paris', timeBucket: '2024-01-01T00:00:00.000Z' } },
+        { signal: expect.any(AbortSignal) },
+      );
+      expect(timelineManager.months[0].getFirstAsset()?.id).toEqual(asset.id);
+    });
+  });
+
   describe('externalAssets', () => {
     let timelineManager: TimelineManager;
     let januaryAsset: TimelineAsset;

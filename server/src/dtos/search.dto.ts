@@ -83,6 +83,19 @@ const MetadataSearchSchema = RandomSearchSchema.extend({
   page: z.int().min(1).optional().describe('Page number'),
 }).meta({ id: 'MetadataSearchDto' });
 
+const SearchTimeBucketsSchema = MetadataSearchSchema.omit({
+  page: true,
+  size: true,
+  withExif: true,
+  withPeople: true,
+}).meta({
+  id: 'SearchTimeBucketsDto',
+});
+
+const SearchTimeBucketSchema = SearchTimeBucketsSchema.extend({
+  timeBucket: z.string().describe('Time bucket identifier in YYYY-MM-DD format').meta({ example: '2024-01-01' }),
+}).meta({ id: 'SearchTimeBucketDto' });
+
 const StatisticsSearchSchema = BaseSearchSchema.extend({
   description: z.string().trim().optional().describe('Filter by description text'),
 }).meta({ id: 'StatisticsSearchDto' });
@@ -157,6 +170,8 @@ export class RandomSearchDto extends createZodDto(RandomSearchSchema) {}
 export class LargeAssetSearchDto extends createZodDto(LargeAssetSearchSchema) {}
 export class MetadataSearchDto extends createZodDto(MetadataSearchSchema) {}
 export class StatisticsSearchDto extends createZodDto(StatisticsSearchSchema) {}
+export class SearchTimeBucketsDto extends createZodDto(SearchTimeBucketsSchema) {}
+export class SearchTimeBucketDto extends createZodDto(SearchTimeBucketSchema) {}
 export class SmartSearchDto extends createZodDto(SmartSearchSchema) {}
 export class SearchPlacesDto extends createZodDto(SearchPlacesSchema) {}
 export class SearchPeopleDto extends createZodDto(SearchPeopleSchema) {}

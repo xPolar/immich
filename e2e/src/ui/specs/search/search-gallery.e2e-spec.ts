@@ -6,11 +6,13 @@ import {
   generateTimelineData,
   TimelineAssetConfig,
   TimelineData,
-  toAssetResponseDto,
+  toColumnarFormat,
 } from 'src/ui/generators/timeline';
 import { setupBaseMockApiRoutes } from 'src/ui/mock-network/base-network';
 import { setupTimelineMockApiRoutes, TimelineTestContext } from 'src/ui/mock-network/timeline-network';
 import { assetViewerUtils } from '../timeline/utils';
+
+const toMonth = (date: string) => date.slice(0, 7);
 
 const buildSearchUrl = (assetId: string) => {
   const searchQuery = encodeURIComponent(JSON.stringify({ originalFileName: 'test' }));
@@ -18,7 +20,7 @@ const buildSearchUrl = (assetId: string) => {
 };
 
 test.describe.configure({ mode: 'parallel' });
-test.describe('search gallery-viewer', () => {
+test.describe('search timeline', () => {
   let adminUserId: string;
   let timelineRestData: TimelineData;
   const assets: TimelineAssetConfig[] = [];
@@ -47,28 +49,28 @@ test.describe('search gallery-viewer', () => {
     await setupBaseMockApiRoutes(context, adminUserId);
     await setupTimelineMockApiRoutes(context, timelineRestData, changes, testContext);
 
-    await context.route('**/api/search/metadata', async (route, request) => {
-      if (request.method() === 'POST') {
-        const searchAssets = assets
-          .slice(0, 5)
-          .filter((asset) => !changes.assetDeletions.includes(asset.id))
-          .map((asset) => toAssetResponseDto(asset));
-        return route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          json: {
-            albums: { total: 0, count: 0, items: [], facets: [] },
-            assets: {
-              total: searchAssets.length,
-              count: searchAssets.length,
-              items: searchAssets,
-              facets: [],
-              nextPage: null,
-            },
-          },
-        });
+    const searchResults = () => assets.slice(0, 5).filter((asset) => !changes.assetDeletions.includes(asset.id));
+
+    await context.route('**/api/search/metadata/buckets', async (route) => {
+      const counts = new Map<string, number>();
+      for (const asset of searchResults()) {
+        const month = toMonth(asset.localDateTime);
+        counts.set(month, (counts.get(month) ?? 0) + 1);
       }
-      await route.fallback();
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        json: [...counts].map(([month, count]) => ({ timeBucket: `${month}-01`, count })),
+      });
+    });
+
+    await context.route('**/api/search/metadata/bucket', async (route, request) => {
+      const month = toMonth(request.postDataJSON().timeBucket);
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        json: toColumnarFormat(searchResults().filter((asset) => toMonth(asset.localDateTime) === month)),
+      });
     });
   });
 

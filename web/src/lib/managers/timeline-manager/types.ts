@@ -1,4 +1,4 @@
-import type { AssetStackResponseDto, AssetVisibility } from '@immich/sdk';
+import type { AssetStackResponseDto, AssetVisibility, SearchTimeBucketsDto } from '@immich/sdk';
 import type { TimelineDate, TimelineDateTime, TimelineYearMonth } from '$lib/utils/timeline-util';
 
 export type ViewportTopMonth = TimelineYearMonth | undefined | 'lead-in' | 'lead-out';
@@ -10,6 +10,7 @@ export type TimelineManagerOptions = Omit<AssetApiGetTimeBucketsRequest, 'size'>
   deferInit?: boolean;
   assetFilter?: Set<string>;
   externalAssets?: boolean;
+  search?: SearchTimeBucketsDto;
 };
 
 export type AssetDescriptor = { id: string };

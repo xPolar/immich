@@ -24,6 +24,7 @@
   import { authManager } from '$lib/managers/auth-manager.svelte';
   import { featureFlagsManager } from '$lib/managers/feature-flags-manager.svelte';
   import type { TimelineManager } from '$lib/managers/timeline-manager/timeline-manager.svelte';
+  import type { TimelineManagerOptions } from '$lib/managers/timeline-manager/types';
   import { Route } from '$lib/route';
   import { getAssetBulkActions } from '$lib/services/asset.service';
   import { lang, locale } from '$lib/stores/preferences.store';
@@ -33,26 +34,13 @@
   import { isAlbumsRoute, isPeopleRoute } from '$lib/utils/navigation';
   import { toTimelineAsset } from '$lib/utils/timeline-util';
   import { getTypedSearchDisplayText } from '$lib/utils/typed-search/typed-search-display-cache';
-  import {
-    type AssetResponseDto,
-    getPerson,
-    getTagById,
-    type MetadataSearchDto,
-    searchAssets,
-    searchSmart,
-    type SmartSearchDto,
-  } from '@immich/sdk';
+  import { getPerson, getTagById, type MetadataSearchDto, searchSmart, type SmartSearchDto } from '@immich/sdk';
   import { ActionButton, CommandPaletteDefaultProvider, Icon, LoadingSpinner } from '@immich/ui';
   import { mdiArrowLeft, mdiClose, mdiDotsVertical, mdiImageOffOutline } from '@mdi/js';
-  import { range } from 'lodash-es';
   import { untrack } from 'svelte';
   import { t } from 'svelte-i18n';
 
   const SMART_SEARCH_PAGE_SIZE = 500;
-  const METADATA_SEARCH_PAGE_SIZE = 1000;
-  const METADATA_SEARCH_PRELOAD_PAGES = 10;
-  const PRELOAD_CONCURRENCY = 4;
-  const timelineOptions = { externalAssets: true };
 
   // Viewing an asset pushes its own history state, which causes weird
   // behavior for history.back(). To prevent that we store the previous page
@@ -73,8 +61,8 @@
   );
   let searchTermKeys = $derived(getObjectKeys(terms));
   let isSmartSearch = $derived(('query' in terms || 'queryAssetId' in terms) && smartSearchEnabled);
-  let pageSize = $derived(isSmartSearch ? SMART_SEARCH_PAGE_SIZE : METADATA_SEARCH_PAGE_SIZE);
-  let preloadPages = $derived(isSmartSearch ? 1 : METADATA_SEARCH_PRELOAD_PAGES);
+  let timelineOptions = $derived<TimelineManagerOptions>(isSmartSearch ? { externalAssets: true } : { search: terms });
+  let isSearching = $derived(isSmartSearch ? isLoading : !timelineManager.isInitialized);
   let isNearTimelineEnd = $derived(
     timelineManager.viewportHeight > 0 &&
       timelineManager.visibleWindow.bottom + timelineManager.viewportHeight >= timelineManager.totalViewerHeight,
@@ -88,8 +76,8 @@
   });
 
   $effect(() => {
-    if (!isLoading && nextPage && isNearTimelineEnd) {
-      untrack(() => handlePromiseError(loadSearchPages(nextPage, 1)));
+    if (isSmartSearch && !isLoading && nextPage && isNearTimelineEnd) {
+      untrack(() => handlePromiseError(loadSmartSearchPage(nextPage)));
     }
   });
 
@@ -117,42 +105,27 @@
   async function onSearchQueryUpdate() {
     searchGeneration++;
     nextPage = 0;
-    await loadSearchPages(1, preloadPages);
+    if (isSmartSearch) {
+      await loadSmartSearchPage(1);
+    }
   }
 
-  function fetchSearchPage(page: number) {
-    const searchDto: SearchTerms = { page, size: pageSize, withExif: true, ...terms };
-    return isSmartSearch
-      ? searchSmart({ smartSearchDto: { ...searchDto, language: $lang } })
-      : searchAssets({ metadataSearchDto: searchDto });
-  }
-
-  async function loadSearchPages(firstPage: number, pageCount: number) {
+  async function loadSmartSearchPage(page: number) {
     const generation = searchGeneration;
-    const endPage = firstPage + pageCount;
     isLoading = true;
 
     try {
-      const assets: AssetResponseDto[] = [];
-      let page = firstPage;
-      let hasNextPage = true;
-      while (hasNextPage && page < endPage) {
-        const pages = range(page, Math.min(page + PRELOAD_CONCURRENCY, endPage));
-        const responses = await Promise.all(pages.map((page) => fetchSearchPage(page)));
-        for (const response of responses) {
-          assets.push(...response.assets.items);
-        }
-        hasNextPage = !!responses.at(-1)?.assets.nextPage;
-        page += pages.length;
-      }
+      const { assets } = await searchSmart({
+        smartSearchDto: { page, size: SMART_SEARCH_PAGE_SIZE, withExif: true, ...terms, language: $lang },
+      });
 
       await timelineManager.initTask.waitUntilExecution();
       if (generation !== searchGeneration) {
         return;
       }
 
-      timelineManager.upsertAssets(assets.map((asset) => toTimelineAsset(asset)));
-      nextPage = hasNextPage ? page : 0;
+      timelineManager.upsertAssets(assets.items.map((asset) => toTimelineAsset(asset)));
+      nextPage = assets.nextPage ? page + 1 : 0;
     } catch (error) {
       if (generation === searchGeneration) {
         handleError(error, $t('loading_search_results_failed'));
@@ -317,11 +290,11 @@
         </section>
       {/if}
 
-      {#if isLoading && timelineManager.assetCount === 0}
+      {#if isSearching && timelineManager.assetCount === 0}
         <div class="flex items-center justify-center py-16">
           <LoadingSpinner size="giant" />
         </div>
-      {:else if !isLoading && timelineManager.assetCount === 0}
+      {:else if !isSearching && timelineManager.assetCount === 0}
         <div class="flex min-h-[calc(66vh-11rem)] w-full place-content-center items-center dark:text-white">
           <div class="flex flex-col content-center items-center text-center">
             <Icon icon={mdiImageOffOutline} size="3.5em" />
