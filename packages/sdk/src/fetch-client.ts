@@ -1732,6 +1732,210 @@ export type SearchResponseDto = {
     albums: SearchAlbumResponseDto;
     assets: SearchAssetResponseDto;
 };
+export type SearchTimeBucketDto = {
+    /** Filter by album IDs */
+    albumIds?: string[];
+    /** Filter by file checksum */
+    checksum?: string;
+    /** Filter by city name */
+    city?: string | null;
+    /** Filter by country name */
+    country?: string | null;
+    /** Filter by creation date (after) */
+    createdAfter?: string;
+    /** Filter by creation date (before) */
+    createdBefore?: string;
+    /** Filter by description text */
+    description?: string;
+    /** Filter by encoded video file path */
+    encodedVideoPath?: string;
+    /** Filter by asset ID */
+    id?: string;
+    /** Filter by encoded status */
+    isEncoded?: boolean;
+    /** Filter by favorite status */
+    isFavorite?: boolean;
+    /** Filter by motion photo status */
+    isMotion?: boolean;
+    /** Filter assets not in any album */
+    isNotInAlbum?: boolean;
+    /** Filter by offline status */
+    isOffline?: boolean;
+    /** Filter by stacked status. Takes precedence over withStacked when both are provided */
+    isStacked?: boolean;
+    /** Filter by lens model */
+    lensModel?: string | null;
+    /** Library ID to filter by */
+    libraryId?: string | null;
+    /** Filter by camera make */
+    make?: string | null;
+    /** Filter by camera model */
+    model?: string | null;
+    /** Filter by OCR text content */
+    ocr?: string;
+    /** Sort order */
+    order?: AssetOrder;
+    /** Filter by original file name */
+    originalFileName?: string;
+    /** Filter by original file path */
+    originalPath?: string;
+    /** Filter by person IDs */
+    personIds?: string[];
+    /** Filter by preview file path */
+    previewPath?: string;
+    /** Filter by rating [1-5], or null for unrated */
+    rating?: number | null;
+    /** Filter by state/province name */
+    state?: string | null;
+    /** Filter by tag IDs */
+    tagIds?: string[] | null;
+    /** Filter by taken date (after) */
+    takenAfter?: string;
+    /** Filter by taken date (before) */
+    takenBefore?: string;
+    /** Filter by thumbnail file path */
+    thumbnailPath?: string;
+    /** Time bucket identifier in YYYY-MM-DD format */
+    timeBucket: string;
+    /** Filter by trash date (after) */
+    trashedAfter?: string;
+    /** Filter by trash date (before) */
+    trashedBefore?: string;
+    "type"?: AssetTypeEnum;
+    /** Filter by update date (after) */
+    updatedAfter?: string;
+    /** Filter by update date (before) */
+    updatedBefore?: string;
+    visibility?: AssetVisibility;
+    /** Include deleted assets */
+    withDeleted?: boolean;
+    /** Include stacked assets */
+    withStacked?: boolean;
+};
+export type TimeBucketAssetResponseDto = {
+    /** Array of city names extracted from EXIF GPS data */
+    city?: (string | null)[];
+    /** Array of country names extracted from EXIF GPS data */
+    country?: (string | null)[];
+    /** Array of UTC timestamps when each asset was originally uploaded to Immich */
+    createdAt: string[];
+    /** Array of video/gif durations in milliseconds (null for static images) */
+    duration: (number | null)[];
+    /** Array of file creation timestamps in UTC */
+    fileCreatedAt: string[];
+    /** Array of asset IDs in the time bucket */
+    id: string[];
+    /** Array indicating whether each asset is favorited */
+    isFavorite: boolean[];
+    /** Array indicating whether each asset is an image (false for videos) */
+    isImage: boolean[];
+    /** Array indicating whether each asset is in the trash */
+    isTrashed: boolean[];
+    /** Array of latitude coordinates extracted from EXIF GPS data */
+    latitude?: (number | null)[];
+    /** Array of live photo video asset IDs (null for non-live photos) */
+    livePhotoVideoId: (string | null)[];
+    /** Array of UTC offset hours at the time each photo was taken. Positive values are east of UTC, negative values are west of UTC. Values may be fractional (e.g., 5.5 for +05:30, -9.75 for -09:45). Applying this offset to 'fileCreatedAt' will give you the time the photo was taken from the photographer's perspective. */
+    localOffsetHours: number[];
+    /** Array of longitude coordinates extracted from EXIF GPS data */
+    longitude?: (number | null)[];
+    /** Array of owner IDs for each asset */
+    ownerId: string[];
+    /** Array of projection types for 360° content (e.g., "EQUIRECTANGULAR", "CUBEFACE", "CYLINDRICAL") */
+    projectionType: (string | null)[];
+    /** Array of aspect ratios (width/height) for each asset */
+    ratio: number[];
+    /** Array of stack information as [stackId, assetCount] tuples (null for non-stacked assets) */
+    stack?: (string[] | null)[];
+    /** Array of BlurHash strings for generating asset previews (base64 encoded) */
+    thumbhash: (string | null)[];
+    /** Array of visibility statuses for each asset (e.g., ARCHIVE, TIMELINE, HIDDEN, LOCKED) */
+    visibility: AssetVisibility[];
+};
+export type SearchTimeBucketsDto = {
+    /** Filter by album IDs */
+    albumIds?: string[];
+    /** Filter by file checksum */
+    checksum?: string;
+    /** Filter by city name */
+    city?: string | null;
+    /** Filter by country name */
+    country?: string | null;
+    /** Filter by creation date (after) */
+    createdAfter?: string;
+    /** Filter by creation date (before) */
+    createdBefore?: string;
+    /** Filter by description text */
+    description?: string;
+    /** Filter by encoded video file path */
+    encodedVideoPath?: string;
+    /** Filter by asset ID */
+    id?: string;
+    /** Filter by encoded status */
+    isEncoded?: boolean;
+    /** Filter by favorite status */
+    isFavorite?: boolean;
+    /** Filter by motion photo status */
+    isMotion?: boolean;
+    /** Filter assets not in any album */
+    isNotInAlbum?: boolean;
+    /** Filter by offline status */
+    isOffline?: boolean;
+    /** Filter by stacked status. Takes precedence over withStacked when both are provided */
+    isStacked?: boolean;
+    /** Filter by lens model */
+    lensModel?: string | null;
+    /** Library ID to filter by */
+    libraryId?: string | null;
+    /** Filter by camera make */
+    make?: string | null;
+    /** Filter by camera model */
+    model?: string | null;
+    /** Filter by OCR text content */
+    ocr?: string;
+    /** Sort order */
+    order?: AssetOrder;
+    /** Filter by original file name */
+    originalFileName?: string;
+    /** Filter by original file path */
+    originalPath?: string;
+    /** Filter by person IDs */
+    personIds?: string[];
+    /** Filter by preview file path */
+    previewPath?: string;
+    /** Filter by rating [1-5], or null for unrated */
+    rating?: number | null;
+    /** Filter by state/province name */
+    state?: string | null;
+    /** Filter by tag IDs */
+    tagIds?: string[] | null;
+    /** Filter by taken date (after) */
+    takenAfter?: string;
+    /** Filter by taken date (before) */
+    takenBefore?: string;
+    /** Filter by thumbnail file path */
+    thumbnailPath?: string;
+    /** Filter by trash date (after) */
+    trashedAfter?: string;
+    /** Filter by trash date (before) */
+    trashedBefore?: string;
+    "type"?: AssetTypeEnum;
+    /** Filter by update date (after) */
+    updatedAfter?: string;
+    /** Filter by update date (before) */
+    updatedBefore?: string;
+    visibility?: AssetVisibility;
+    /** Include deleted assets */
+    withDeleted?: boolean;
+    /** Include stacked assets */
+    withStacked?: boolean;
+};
+export type TimeBucketsResponseDto = {
+    /** Number of assets in this time bucket */
+    count: number;
+    /** Time bucket identifier in YYYY-MM-DD format representing the start of the time period */
+    timeBucket: string;
+};
 export type PlacesResponseDto = {
     /** Administrative level 1 name (state/province) */
     admin1name?: string;
@@ -2507,10 +2711,6 @@ export type SystemConfigMapDto = {
     /** Light map style URL */
     lightStyle: string;
 };
-export type SystemConfigFacesDto = {
-    /** Import */
-    "import": boolean;
-};
 export type SystemConfigDawarichDto = {
     /** API key */
     apiKey: string;
@@ -2520,6 +2720,10 @@ export type SystemConfigDawarichDto = {
     matchWindowMinutes: number;
     /** Dawarich URL */
     url: string;
+};
+export type SystemConfigFacesDto = {
+    /** Import */
+    "import": boolean;
 };
 export type SystemConfigMetadataDto = {
     dawarich: SystemConfigDawarichDto;
@@ -2716,52 +2920,6 @@ export type TagBulkAssetsResponseDto = {
 export type TagUpdateDto = {
     /** Tag color (hex) */
     color?: string | null;
-};
-export type TimeBucketAssetResponseDto = {
-    /** Array of city names extracted from EXIF GPS data */
-    city?: (string | null)[];
-    /** Array of country names extracted from EXIF GPS data */
-    country?: (string | null)[];
-    /** Array of UTC timestamps when each asset was originally uploaded to Immich */
-    createdAt: string[];
-    /** Array of video/gif durations in milliseconds (null for static images) */
-    duration: (number | null)[];
-    /** Array of file creation timestamps in UTC */
-    fileCreatedAt: string[];
-    /** Array of asset IDs in the time bucket */
-    id: string[];
-    /** Array indicating whether each asset is favorited */
-    isFavorite: boolean[];
-    /** Array indicating whether each asset is an image (false for videos) */
-    isImage: boolean[];
-    /** Array indicating whether each asset is in the trash */
-    isTrashed: boolean[];
-    /** Array of latitude coordinates extracted from EXIF GPS data */
-    latitude?: (number | null)[];
-    /** Array of live photo video asset IDs (null for non-live photos) */
-    livePhotoVideoId: (string | null)[];
-    /** Array of UTC offset hours at the time each photo was taken. Positive values are east of UTC, negative values are west of UTC. Values may be fractional (e.g., 5.5 for +05:30, -9.75 for -09:45). Applying this offset to 'fileCreatedAt' will give you the time the photo was taken from the photographer's perspective. */
-    localOffsetHours: number[];
-    /** Array of longitude coordinates extracted from EXIF GPS data */
-    longitude?: (number | null)[];
-    /** Array of owner IDs for each asset */
-    ownerId: string[];
-    /** Array of projection types for 360° content (e.g., "EQUIRECTANGULAR", "CUBEFACE", "CYLINDRICAL") */
-    projectionType: (string | null)[];
-    /** Array of aspect ratios (width/height) for each asset */
-    ratio: number[];
-    /** Array of stack information as [stackId, assetCount] tuples (null for non-stacked assets) */
-    stack?: (string[] | null)[];
-    /** Array of BlurHash strings for generating asset previews (base64 encoded) */
-    thumbhash: (string | null)[];
-    /** Array of visibility statuses for each asset (e.g., ARCHIVE, TIMELINE, HIDDEN, LOCKED) */
-    visibility: AssetVisibility[];
-};
-export type TimeBucketsResponseDto = {
-    /** Number of assets in this time bucket */
-    count: number;
-    /** Time bucket identifier in YYYY-MM-DD format representing the start of the time period */
-    timeBucket: string;
 };
 export type TrashResponseDto = {
     /** Number of items in trash */
@@ -5848,6 +6006,36 @@ export function searchAssets({ metadataSearchDto }: {
         ...opts,
         method: "POST",
         body: metadataSearchDto
+    })));
+}
+/**
+ * Get search time bucket
+ */
+export function searchTimeBucket({ searchTimeBucketDto }: {
+    searchTimeBucketDto: SearchTimeBucketDto;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: TimeBucketAssetResponseDto;
+    }>("/search/metadata/bucket", oazapfts.json({
+        ...opts,
+        method: "POST",
+        body: searchTimeBucketDto
+    })));
+}
+/**
+ * Get search time buckets
+ */
+export function searchTimeBuckets({ searchTimeBucketsDto }: {
+    searchTimeBucketsDto: SearchTimeBucketsDto;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: TimeBucketsResponseDto[];
+    }>("/search/metadata/buckets", oazapfts.json({
+        ...opts,
+        method: "POST",
+        body: searchTimeBucketsDto
     })));
 }
 /**

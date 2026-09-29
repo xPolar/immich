@@ -16,9 +16,12 @@ import {
   SearchStatisticsResponseDto,
   SearchSuggestionRequestDto,
   SearchSuggestionType,
+  SearchTimeBucketDto,
+  SearchTimeBucketsDto,
   SmartSearchDto,
   StatisticsSearchDto,
 } from 'src/dtos/search.dto';
+import { TimeBucketsResponseDto } from 'src/dtos/time-bucket.dto';
 import { AssetOrder, AssetVisibility, Permission } from 'src/enum';
 import { BaseService } from 'src/services/base.service';
 import { requireElevatedPermission } from 'src/utils/access';
@@ -69,30 +72,32 @@ export class SearchService extends BaseService {
   }
 
   async searchMetadata(auth: AuthDto, dto: MetadataSearchDto): Promise<SearchResponseDto> {
-    if (dto.visibility === AssetVisibility.Locked) {
-      requireElevatedPermission(auth);
-    }
-
-    let checksum: Buffer | undefined;
-    if (dto.checksum) {
-      const encoding = dto.checksum.length === 28 ? 'base64' : 'hex';
-      checksum = Buffer.from(dto.checksum, encoding);
-    }
-
     const page = dto.page ?? 1;
     const size = dto.size || 250;
-    const userIds = await this.getUserIdsToSearch(auth, dto.visibility);
+    const options = await this.getMetadataSearchOptions(auth, dto);
     const { hasNextPage, items } = await this.searchRepository.searchMetadata(
       { page, size },
-      {
-        ...dto,
-        checksum,
-        userIds,
-        orderDirection: dto.order ?? AssetOrder.Desc,
-      },
+      { ...options, orderDirection: dto.order ?? AssetOrder.Desc },
     );
 
     return this.mapResponse(items, hasNextPage ? (page + 1).toString() : null, { auth });
+  }
+
+  async searchTimeBuckets(auth: AuthDto, dto: SearchTimeBucketsDto): Promise<TimeBucketsResponseDto[]> {
+    const search = await this.getMetadataSearchOptions(auth, dto);
+    return this.assetRepository.getTimeBuckets({ search, visibility: dto.visibility, order: dto.order });
+  }
+
+  // pre-jsonified response
+  async searchTimeBucket(auth: AuthDto, dto: SearchTimeBucketDto): Promise<string> {
+    const { timeBucket, ...searchDto } = dto;
+    const search = await this.getMetadataSearchOptions(auth, searchDto);
+    const bucket = await this.assetRepository.getTimeBucket(
+      timeBucket,
+      { search, visibility: dto.visibility, order: dto.order },
+      auth,
+    );
+    return bucket.assets;
   }
 
   async searchStatistics(auth: AuthDto, dto: StatisticsSearchDto): Promise<SearchStatisticsResponseDto> {
@@ -206,6 +211,21 @@ export class SearchService extends BaseService {
         return Promise.resolve([]);
       }
     }
+  }
+
+  private async getMetadataSearchOptions(auth: AuthDto, dto: SearchTimeBucketsDto) {
+    if (dto.visibility === AssetVisibility.Locked) {
+      requireElevatedPermission(auth);
+    }
+
+    let checksum: Buffer | undefined;
+    if (dto.checksum) {
+      const encoding = dto.checksum.length === 28 ? 'base64' : 'hex';
+      checksum = Buffer.from(dto.checksum, encoding);
+    }
+
+    const userIds = await this.getUserIdsToSearch(auth, dto.visibility);
+    return { ...dto, checksum, userIds };
   }
 
   private async getUserIdsToSearch(auth: AuthDto, visibility?: AssetVisibility): Promise<string[]> {

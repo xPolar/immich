@@ -26,6 +26,7 @@ import {
   AssetVisibility,
   CalendarHeatmapType,
 } from 'src/enum';
+import { AssetSearchBuilderOptions } from 'src/repositories/search.repository';
 import { DB } from 'src/schema';
 import { AssetAudioTable, AssetKeyframeTable, AssetVideoTable } from 'src/schema/tables/asset-av.table';
 import { AssetExifTable } from 'src/schema/tables/asset-exif.table';
@@ -49,6 +50,7 @@ import {
   withFiles,
   withLibrary,
   withOwner,
+  withSearchFilter,
   withSmartSearch,
   withTagId,
   withTags,
@@ -98,6 +100,7 @@ interface AssetBuilderOptions {
 export interface TimeBucketOptions extends AssetBuilderOptions {
   order?: AssetOrder;
   orderBy?: AssetOrderBy;
+  search?: AssetSearchBuilderOptions;
 }
 
 export interface TimeBucketItem {
@@ -829,7 +832,8 @@ export class AssetRepository {
           .$if(options.isDuplicate !== undefined, (qb) =>
             qb.where('asset.duplicateId', options.isDuplicate ? 'is not' : 'is', null),
           )
-          .$if(!!options.tagId, (qb) => withTagId(qb, options.tagId!)),
+          .$if(!!options.tagId, (qb) => withTagId(qb, options.tagId!))
+          .$if(!!options.search, (qb) => withSearchFilter(this.db, qb, options.search!)),
       )
       .selectFrom('asset')
       .select(sql<string>`("timeBucket" AT TIME ZONE 'UTC')::date::text`.as('timeBucket'))
@@ -989,6 +993,7 @@ export class AssetRepository {
           )
           .$if(!!options.isTrashed, (qb) => qb.where('asset.status', '!=', AssetStatus.Deleted))
           .$if(!!options.tagId, (qb) => withTagId(qb, options.tagId!))
+          .$if(!!options.search, (qb) => withSearchFilter(this.db, qb, options.search!))
           .orderBy(
             options.orderBy == AssetOrderBy.CreatedAt
               ? sql`"createdAt"`

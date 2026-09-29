@@ -248,6 +248,8 @@ Class | Method | HTTP request | Description
 *SearchApi* | [**searchPlaces**](doc//SearchApi.md#searchplaces) | **GET** /search/places | Search places
 *SearchApi* | [**searchRandom**](doc//SearchApi.md#searchrandom) | **POST** /search/random | Search random assets
 *SearchApi* | [**searchSmart**](doc//SearchApi.md#searchsmart) | **POST** /search/smart | Smart asset search
+*SearchApi* | [**searchTimeBucket**](doc//SearchApi.md#searchtimebucket) | **POST** /search/metadata/bucket | Get search time bucket
+*SearchApi* | [**searchTimeBuckets**](doc//SearchApi.md#searchtimebuckets) | **POST** /search/metadata/buckets | Get search time buckets
 *ServerApi* | [**deleteServerLicense**](doc//ServerApi.md#deleteserverlicense) | **DELETE** /server/license | Delete server product key
 *ServerApi* | [**getAboutInfo**](doc//ServerApi.md#getaboutinfo) | **GET** /server/about | Get server information
 *ServerApi* | [**getApkLinks**](doc//ServerApi.md#getapklinks) | **GET** /server/apk-links | Get APK links
@@ -562,6 +564,8 @@ Class | Method | HTTP request | Description
  - [SearchResponseDto](doc//SearchResponseDto.md)
  - [SearchStatisticsResponseDto](doc//SearchStatisticsResponseDto.md)
  - [SearchSuggestionType](doc//SearchSuggestionType.md)
+ - [SearchTimeBucketDto](doc//SearchTimeBucketDto.md)
+ - [SearchTimeBucketsDto](doc//SearchTimeBucketsDto.md)
  - [ServerAboutResponseDto](doc//ServerAboutResponseDto.md)
  - [ServerApkLinksDto](doc//ServerApkLinksDto.md)
  - [ServerConfigDto](doc//ServerConfigDto.md)

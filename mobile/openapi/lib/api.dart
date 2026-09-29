@@ -281,6 +281,8 @@ part 'model/search_library_response_dto.dart';
 part 'model/search_response_dto.dart';
 part 'model/search_statistics_response_dto.dart';
 part 'model/search_suggestion_type.dart';
+part 'model/search_time_bucket_dto.dart';
+part 'model/search_time_buckets_dto.dart';
 part 'model/server_about_response_dto.dart';
 part 'model/server_apk_links_dto.dart';
 part 'model/server_config_dto.dart';
