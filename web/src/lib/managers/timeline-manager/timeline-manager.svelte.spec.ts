@@ -842,6 +842,54 @@ describe('TimelineManager', () => {
     });
   });
 
+  describe('externalAssets', () => {
+    let timelineManager: TimelineManager;
+    let januaryAsset: TimelineAsset;
+    let marchAsset: TimelineAsset;
+
+    beforeEach(async () => {
+      januaryAsset = deriveLocalDateTimeFromFileCreatedAt(
+        timelineAssetFactory.build({ fileCreatedAt: fromISODateTimeUTCToObject('2024-01-20T12:00:00.000Z') }),
+      );
+      marchAsset = deriveLocalDateTimeFromFileCreatedAt(
+        timelineAssetFactory.build({ fileCreatedAt: fromISODateTimeUTCToObject('2024-03-05T12:00:00.000Z') }),
+      );
+      timelineManager = new TimelineManager();
+      await timelineManager.updateOptions({ externalAssets: true });
+      await timelineManager.updateViewport({ width: 1588, height: 1000 });
+    });
+
+    it('does not fetch time buckets', () => {
+      expect(timelineManager.isInitialized).toBe(true);
+      expect(timelineManager.months).toEqual([]);
+      expect(sdkMock.getTimeBuckets).not.toHaveBeenCalled();
+    });
+
+    it('groups provided assets into months and updates the scrubber', () => {
+      timelineManager.upsertAssets([januaryAsset, marchAsset]);
+
+      expect(timelineManager.assetCount).toEqual(2);
+      expect(
+        timelineManager.scrubberMonths.map(({ year, month, assetCount }) => ({ year, month, assetCount })),
+      ).toEqual([
+        { year: 2024, month: 3, assetCount: 1 },
+        { year: 2024, month: 1, assetCount: 1 },
+      ]);
+    });
+
+    it('keeps provided assets when a month is cancelled or reloaded', async () => {
+      timelineManager.upsertAssets([januaryAsset]);
+      const month = timelineManager.months[0];
+
+      month.cancel();
+      await timelineManager.loadTimelineMonth(month.yearMonth);
+
+      expect(month.isLoaded).toBe(true);
+      expect(month.getFirstAsset()?.id).toEqual(januaryAsset.id);
+      expect(sdkMock.getTimeBucket).not.toHaveBeenCalled();
+    });
+  });
+
   describe('showAssetOwners', () => {
     const LS_KEY = 'album-show-asset-owners';
 

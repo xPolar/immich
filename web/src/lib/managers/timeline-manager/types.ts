@@ -9,6 +9,7 @@ export type TimelineManagerOptions = Omit<AssetApiGetTimeBucketsRequest, 'size'>
   timelineAlbumId?: string;
   deferInit?: boolean;
   assetFilter?: Set<string>;
+  externalAssets?: boolean;
 };
 
 export type AssetDescriptor = { id: string };
